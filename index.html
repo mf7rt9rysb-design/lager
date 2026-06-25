@@ -2029,6 +2029,7 @@ async function loadMonthlyStats() {
 // ── FRAGTPRISER ──
 let prisLoaded = false;
 let allProducts = [];
+let allPriceStats = {};
 
 async function loadPriser(){
   prisLoaded = false; // will be set true after successful load
@@ -2037,10 +2038,13 @@ async function loadPriser(){
   if(loading) loading.style.display = 'block';
   if(content) content.style.display = 'none';
   try {
-    const d = await jsonpShip({ action:'getProducts', country:'DK' });
+    const [d, priceStats] = await Promise.all([
+      jsonpShip({ action:'getProducts', country:'DK' }),
+      jsonpShip({ action:'getPricingStats' }).catch(() => ({}))
+    ]);
     allProducts = Array.isArray(d) ? d : (d.products || d.shipments || []);
-    // Filter only available products
     allProducts = allProducts.filter(p => p.available !== false);
+    allPriceStats = priceStats || {};
     prisLoaded = true;
     if(loading) loading.style.display = 'none';
     if(content) content.style.display = 'block';
@@ -2091,29 +2095,46 @@ function renderPriser(products){
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th style="width:30%">Produkt</th>
-            <th style="width:15%">Kode</th>
-            <th style="width:15%">Leveringstid</th>
-            <th style="width:15%">Fra land</th>
-            <th style="width:25%">Vægtintervaller</th>
+            <th style="width:28%">Produkt</th>
+            <th style="width:14%">Kode</th>
+            <th style="width:14%">Leveringstid</th>
+            <th style="width:10%">Fra</th>
+            <th style="width:18%">Din pris (seneste 3 mdr.)</th>
+            <th style="width:16%">Brug</th>
           </tr></thead>
           <tbody>
             ${prods.map(p => {
               const transit = p.expected_transit_time || '—';
               const fromCountry = p.sender_country_code || '—';
-              const weights = (p.weight_intervals||[]).length
-                ? p.weight_intervals.map(w=>w.description).join(', ')
-                : '—';
+              const code = p.code || p.product_code || '';
+              const ps = allPriceStats[code];
               const available = p.available !== false;
+
+              let priceCell, usageCell;
+              if (ps) {
+                const avgFmt = ps.avg.toLocaleString('da-DK',{minimumFractionDigits:2,maximumFractionDigits:2});
+                const minFmt = ps.min.toLocaleString('da-DK',{minimumFractionDigits:2,maximumFractionDigits:2});
+                const maxFmt = ps.max.toLocaleString('da-DK',{minimumFractionDigits:2,maximumFractionDigits:2});
+                priceCell = `<td>
+                  <div style="font-weight:600;font-size:13px">${avgFmt} kr.</div>
+                  <div style="font-size:11px;color:var(--ink-3)">min ${minFmt} / max ${maxFmt}</div>
+                </td>`;
+                usageCell = `<td><span class="badge badge-blue">${ps.count} fors.</span></td>`;
+              } else {
+                priceCell = `<td style="color:var(--ink-3);font-size:12px">Ikke brugt</td>`;
+                usageCell = `<td>—</td>`;
+              }
+
               return `<tr style="${!available?'opacity:.5':''}">
                 <td>
                   <div class="td-name">${esc(p.name||'—')}</div>
                   ${!available?'<span class="badge badge-gray" style="margin-top:2px">Ikke tilgængelig</span>':''}
                 </td>
-                <td><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-3)">${esc(p.code||p.product_code||'—')}</span></td>
+                <td><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-3)">${esc(code||'—')}</span></td>
                 <td style="font-size:12px;color:var(--ink-2)">${esc(transit)}</td>
                 <td><span style="font-size:11px;font-family:'IBM Plex Mono',monospace">${esc(fromCountry)}</span></td>
-                <td><span style="font-size:11px;color:var(--ink-3)">${esc(weights.length>60?weights.slice(0,57)+'…':weights)}</span></td>
+                ${priceCell}
+                ${usageCell}
               </tr>`;
             }).join('')}
           </tbody>

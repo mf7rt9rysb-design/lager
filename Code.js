@@ -24,6 +24,7 @@ function doGet(e) {
       result = { error: 'Ikke autoriseret' };
     } else if (action === 'getShipments')         result = getShipments(p);
     else if (action === 'getProducts')     result = getProducts(p);
+    else if (action === 'getPricingStats') result = getPricingStats();
     else if (action === 'getPrinters')     result = getPrinters();
     else if (action === 'getLabel')        result = getLabel(p.id);
     else if (action === 'createShipment')  result = createShipment(p);
@@ -227,6 +228,47 @@ function getShipments(p) {
 
 function getProducts(p) {
   return shipmondoRequest('GET', 'products?country_code=' + (p.country || 'DK'));
+}
+
+function getPricingStats() {
+  var now = new Date();
+  var from = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  var fromStr = from.getFullYear() + '-' + padZ(from.getMonth() + 1) + '-01';
+
+  var all = [];
+  var page = 1;
+  while (true) {
+    var data = shipmondoRequest('GET', 'shipments?per_page=100&page=' + page + '&created_at_min=' + fromStr);
+    if (!Array.isArray(data) || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < 100) break;
+    page++;
+  }
+
+  var stats = {};
+  for (var i = 0; i < all.length; i++) {
+    var s = all[i];
+    var code = s.product_code || 'UNKNOWN';
+    var price = parseFloat(s.price);
+    if (isNaN(price) || price <= 0) continue;
+    if (!stats[code]) stats[code] = { prices: [], carrier: s.carrier_code || '' };
+    stats[code].prices.push(price);
+  }
+
+  var result = {};
+  for (var code in stats) {
+    var prices = stats[code].prices;
+    prices.sort(function(a, b) { return a - b; });
+    var sum = prices.reduce(function(a, b) { return a + b; }, 0);
+    result[code] = {
+      avg:    Math.round((sum / prices.length) * 100) / 100,
+      min:    Math.round(prices[0] * 100) / 100,
+      max:    Math.round(prices[prices.length - 1] * 100) / 100,
+      count:  prices.length,
+      carrier: stats[code].carrier
+    };
+  }
+  return result;
 }
 
 function getPrinters() {
