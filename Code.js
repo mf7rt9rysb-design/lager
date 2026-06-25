@@ -244,7 +244,7 @@ function getProducts(p) {
 
 function getSesuPrices() {
   var cache = CacheService.getScriptCache();
-  var cached = cache.get('sesu_prices_v2');
+  var cached = cache.get('sesu_prices_v3');
   if (cached) return JSON.parse(cached);
 
   var products = {};
@@ -285,7 +285,7 @@ function getSesuPrices() {
     }
   }
 
-  cache.put('sesu_prices_v2', JSON.stringify(products), 21600);
+  cache.put('sesu_prices_v3', JSON.stringify(products), 21600);
   return products;
 }
 
