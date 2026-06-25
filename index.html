@@ -1447,7 +1447,12 @@ function renderOverview(){
       <div class="stat-value" style="color:${low.length?'var(--red)':'var(--ink)'}">${String(low.length).padStart(2,'0')}</div>
       <div class="stat-detail">${low.length?'kræver genbestilling':'alt over minimum'}</div>
     </div>
-    ${monthlyHtml}`;
+    ${monthlyHtml}
+    <div class="stat-card" id="lv-card" style="cursor:pointer;user-select:none" onclick="toggleLagervaerdi()" title="Klik for at låse op">
+      <div class="stat-label">Samlet lagerværdi <span id="lv-lock" style="font-size:11px">🔒</span></div>
+      <div class="stat-value" id="lv-value" style="font-size:20px;letter-spacing:.08em">••••••</div>
+      <div class="stat-detail" id="lv-detail">${sesuPricesLoaded ? totalLagervaerdi > 0 ? 'baseret på sesu.dk priser' : 'hent priser under Alle varer' : 'hent priser under Alle varer'}</div>
+    </div>`;
 
   const rEl = document.getElementById('ov-rooms');
   rEl.innerHTML = rooms.length ? rooms.map(r=>{
@@ -1556,6 +1561,17 @@ function renderItems(){
   tb.innerHTML = rows.join('');
 
   // Total lagerværdi footer
+  // Gem total globalt og opdater oversigt-kortet hvis det er åbent
+  if(sesuPricesLoaded) {
+    totalLagervaerdi = totalValue;
+    const lvCard = document.getElementById('lv-value');
+    const lvDetail = document.getElementById('lv-detail');
+    if(lvCard && lagervaerdiUnlocked){
+      lvCard.textContent = totalValue > 0 ? totalValue.toLocaleString('da-DK') + ' kr.' : '—';
+    }
+    if(lvDetail && totalValue > 0) lvDetail.textContent = 'baseret på sesu.dk priser';
+  }
+
   const totalEl = document.getElementById('items-value-total');
   if(sesuPricesLoaded && valuedCount > 0){
     totalEl.style.display='block';
@@ -2143,6 +2159,68 @@ async function submitShipment(){
   }
 }
 
+
+// ── LAGERVÆRDI ──
+let totalLagervaerdi = 0;
+let lagervaerdiUnlocked = false;
+
+async function toggleLagervaerdi() {
+  const valEl  = document.getElementById('lv-value');
+  const lockEl = document.getElementById('lv-lock');
+  const detEl  = document.getElementById('lv-detail');
+  if(!sesuPricesLoaded){
+    detEl.textContent = 'Hent priser under Alle varer først';
+    return;
+  }
+  if(lagervaerdiUnlocked){
+    lagervaerdiUnlocked = false;
+    valEl.textContent = '••••••';
+    lockEl.textContent = '🔒';
+    return;
+  }
+  // Prompt for PIN via mini modal
+  document.getElementById('modal-box').innerHTML = `
+    <div class="modal-title">Lagerværdi — indtast kode</div>
+    <div style="margin:16px 0">
+      <input type="password" id="lv-pin-input" class="form-input" placeholder="Adgangskode" style="width:100%;font-size:16px;letter-spacing:.1em" onkeydown="if(event.key==='Enter')confirmLvPin()">
+    </div>
+    <div id="lv-pin-err" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmLvPin()">Vis beløb</button>
+    </div>`;
+  openModal();
+  setTimeout(()=>document.getElementById('lv-pin-input')?.focus(), 80);
+}
+
+async function confirmLvPin() {
+  const inp = document.getElementById('lv-pin-input');
+  const err = document.getElementById('lv-pin-err');
+  if(!inp) return;
+  err.textContent = 'Verificerer…';
+  const hash = await sha256(inp.value);
+  try {
+    const res = await jsonpShip({ action:'verifyLogin', hash });
+    if(res && res.token){
+      lagervaerdiUnlocked = true;
+      closeModal();
+      const valEl  = document.getElementById('lv-value');
+      const lockEl = document.getElementById('lv-lock');
+      const detEl  = document.getElementById('lv-detail');
+      if(valEl){
+        valEl.textContent = totalLagervaerdi > 0
+          ? totalLagervaerdi.toLocaleString('da-DK') + ' kr.'
+          : '— (hent priser)';
+        lockEl.textContent = '🔓';
+        detEl.textContent = 'baseret på sesu.dk priser';
+      }
+    } else {
+      err.textContent = 'Forkert kode';
+      inp.value = '';
+      inp.focus();
+    }
+  } catch(e) { err.textContent = 'Fejl — prøv igen'; }
+}
 
 // ── BALANCE ──
 let shipBalanceAmt = null;
