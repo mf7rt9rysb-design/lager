@@ -25,6 +25,7 @@ function doGet(e) {
     } else if (action === 'getShipments')         result = getShipments(p);
     else if (action === 'getProducts')     result = getProducts(p);
     else if (action === 'getPricingStats') result = getPricingStats();
+    else if (action === 'getSesuPrices')  result = getSesuPrices();
     else if (action === 'getPrinters')     result = getPrinters();
     else if (action === 'getLabel')        result = getLabel(p.id);
     else if (action === 'createShipment')  result = createShipment(p);
@@ -228,6 +229,29 @@ function getShipments(p) {
 
 function getProducts(p) {
   return shipmondoRequest('GET', 'products?country_code=' + (p.country || 'DK'));
+}
+
+function getSesuPrices() {
+  var prices = {};
+  for (var page = 1; page <= 12; page++) {
+    var url = 'https://sesu.dk/shop/page/' + page + '/';
+    var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    var html = res.getContentText();
+    if (res.getResponseCode() !== 200 || html.indexOf('sku&quot;') === -1) break;
+
+    // Extract sku + price from encoded JSON in data attributes
+    var matches = html.match(/sku&quot;:&quot;([^&]*)&quot;,&quot;price&quot;:([0-9.]+)/g);
+    if (!matches) continue;
+    for (var i = 0; i < matches.length; i++) {
+      var m = matches[i].match(/sku&quot;:&quot;([^&]*)&quot;,&quot;price&quot;:([0-9.]+)/);
+      if (m) {
+        var sku = m[1].trim();
+        var price = parseFloat(m[2]);
+        if (sku && !isNaN(price)) prices[sku] = price;
+      }
+    }
+  }
+  return prices;
 }
 
 function getPricingStats() {

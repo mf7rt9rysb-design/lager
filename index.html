@@ -1103,15 +1103,18 @@ tbody tr:hover td { background: var(--surface); }
             <table>
               <thead><tr>
                 <th style="width:3%"><input type="checkbox" id="check-all" onchange="toggleAllCheck(this)" class="row-check"></th>
-                <th style="width:26%">Varenavn</th>
-                <th style="width:13%">Kategori</th>
-                <th style="width:21%">Placering</th>
-                <th style="width:9%">Antal</th>
-                <th style="width:9%">Min.</th>
-                <th style="width:19%"></th>
+                <th style="width:22%">Varenavn</th>
+                <th style="width:11%">Kategori</th>
+                <th style="width:17%">Placering</th>
+                <th style="width:7%">Antal</th>
+                <th style="width:7%">Min.</th>
+                <th style="width:10%">Pris <span id="sesu-status" style="font-size:10px;font-weight:400;color:var(--ink-3)"></span></th>
+                <th style="width:11%">Lagerværdi</th>
+                <th style="width:12%"></th>
               </tr></thead>
               <tbody id="items-tbody"></tbody>
             </table>
+            <div id="items-value-total" style="display:none;padding:10px 16px;text-align:right;font-size:12px;border-top:1px solid var(--border);color:var(--ink-2)"></div>
             <div id="items-empty" class="empty" style="display:none">
               <div class="empty-icon">📭</div>
               <div class="empty-text">Ingen varer matcher din søgning</div>
@@ -1266,6 +1269,24 @@ async function loadAll(quiet){
 
 function renderAll(){ renderOverview(); renderItems(); renderRooms(); }
 
+async function loadSesuPrices() {
+  const statusEl = document.getElementById('sesu-status');
+  if(statusEl) statusEl.textContent = '⟳';
+  try {
+    const d = await jsonpShip({ action:'getSesuPrices' });
+    if(d && !d.error) {
+      sesuPrices = d;
+      sesuPricesLoaded = true;
+      if(statusEl) statusEl.textContent = '● live';
+      renderItems();
+    } else {
+      if(statusEl) statusEl.textContent = '';
+    }
+  } catch(e) {
+    if(statusEl) statusEl.textContent = '';
+  }
+}
+
 function catBadge(cat){ return `<span class="badge ${BADGE[cat]||'badge-gray'}">${esc(cat)}</span>`; }
 function esc(s){ const d=document.createElement('div'); d.textContent=String(s??''); return d.innerHTML; }
 
@@ -1391,12 +1412,31 @@ function renderItems(){
     return ms && (activeCat==='Alle'||i.cat===activeCat);
   });
   const tb = document.getElementById('items-tbody'), em = document.getElementById('items-empty');
-  if(!fil.length){ tb.innerHTML=''; em.style.display=''; document.getElementById('check-all').checked=false; return; }
+  if(!fil.length){ tb.innerHTML=''; em.style.display=''; document.getElementById('check-all').checked=false;
+    document.getElementById('items-value-total').style.display='none'; return; }
   em.style.display='none';
-  tb.innerHTML = fil.map(i=>{
+
+  let totalValue = 0, valuedCount = 0;
+  const rows = fil.map(i=>{
     const r = rooms.find(r=>r.id===i.room);
     const low = parseInt(i.qty||0)<parseInt(i.minQty||0);
     const checked = selectedItems.has(i.id) ? 'checked' : '';
+    const qty = parseInt(i.qty||0);
+
+    // Match price by SKU
+    const sku = (i.sku||'').trim();
+    const unitPrice = sku && sesuPrices[sku] !== undefined ? sesuPrices[sku] : null;
+    const lineValue = unitPrice !== null ? unitPrice * qty : null;
+    if(lineValue !== null){ totalValue += lineValue; valuedCount++; }
+
+    const priceCell = unitPrice !== null
+      ? `<td style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600">${unitPrice.toLocaleString('da-DK')} kr.</td>`
+      : `<td style="color:var(--ink-3);font-size:11px">${sesuPricesLoaded?'—':'…'}</td>`;
+
+    const valueCell = lineValue !== null
+      ? `<td style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--blue)">${lineValue.toLocaleString('da-DK')} kr.</td>`
+      : `<td style="color:var(--ink-3);font-size:11px">—</td>`;
+
     return `<tr>
       <td><input type="checkbox" class="row-check" ${checked} onchange="toggleCheck('${i.id}',this)"></td>
       <td>
@@ -1413,6 +1453,8 @@ function renderItems(){
         ${low?'<span class="badge badge-red" style="margin-left:4px;font-size:9px">LAV</span>':''}
       </td>
       <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-3)">${i.minQty}</td>
+      ${priceCell}
+      ${valueCell}
       <td>
         <div class="td-actions">
           <button class="btn btn-ghost btn-sm" onclick="showQR('${i.id}')" title="QR-kode">⊞</button>
@@ -1421,7 +1463,17 @@ function renderItems(){
         </div>
       </td>
     </tr>`;
-  }).join('');
+  });
+  tb.innerHTML = rows.join('');
+
+  // Total lagerværdi footer
+  const totalEl = document.getElementById('items-value-total');
+  if(sesuPricesLoaded && valuedCount > 0){
+    totalEl.style.display='block';
+    totalEl.innerHTML = `Samlet lagerværdi (${valuedCount} af ${fil.length} varer med pris): <strong style="color:var(--blue);font-size:14px">${totalValue.toLocaleString('da-DK')} kr.</strong>`;
+  } else {
+    totalEl.style.display='none';
+  }
 }
 
 function renderRooms(){
@@ -2030,6 +2082,8 @@ async function loadMonthlyStats() {
 let prisLoaded = false;
 let allProducts = [];
 let allPriceStats = {};
+let sesuPrices = {};
+let sesuPricesLoaded = false;
 
 async function loadPriser(){
   prisLoaded = false; // will be set true after successful load
@@ -2171,6 +2225,7 @@ async function doLogin() {
       loadBalance();
       loadMonthlyStats();
       loadMonthlyHistory();
+      loadSesuPrices();
     } else {
       loginAttempts++;
       err.textContent = 'Forkert kode — prøv igen';
@@ -2401,6 +2456,7 @@ if (_hasToken) {
   loadBalance();
   loadMonthlyStats();
   loadMonthlyHistory();
+  loadSesuPrices();
 }
 setInterval(()=>{ if(sessionStorage.getItem('lager_token')) loadBalance(); }, 60000);
 setInterval(()=>{ if(sessionStorage.getItem('lager_token')) loadMonthlyStats(); }, 300000);
