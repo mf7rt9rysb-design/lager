@@ -1281,15 +1281,19 @@ async function loadSesuPrices() {
       // d may be {sku: {price, name}} (v2) or {sku: price} (v1 cached)
       sesuPrices = {};
       sesuByName = {};
+      sesuProducts = [];
       for(const sku in d){
         const v = d[sku];
         if(typeof v === 'object' && v !== null){
           sesuPrices[sku] = v.price;
           if(v.name) sesuByName[normName(v.name)] = { price: v.price, sku, name: v.name };
+          sesuProducts.push({ sku, price: v.price, name: v.name || sku });
         } else {
-          sesuPrices[sku] = v; // v1 fallback
+          sesuPrices[sku] = v;
+          sesuProducts.push({ sku, price: v, name: sku });
         }
       }
+      sesuProducts.sort((a,b)=>a.name.localeCompare(b.name,'da'));
       sesuPricesLoaded = true;
       if(statusEl) statusEl.textContent = '✓ ' + Object.keys(sesuPrices).length + ' priser';
       renderItems();
@@ -1319,6 +1323,17 @@ function findSesuPrice(itemName, itemSku){
       return { price: sesuByName[sn].price, sesuName: sesuByName[sn].name, how:'name' };
   }
   return null;
+}
+
+async function assignSesuSku(itemId, sku) {
+  if(!sku) return;
+  const item = items.find(i=>i.id===itemId);
+  if(!item) return;
+  item.sku = sku;
+  const token = sessionStorage.getItem('lager_token')||'';
+  const p = {...item, token, action:'saveItem'};
+  await jsonp(LAGER_API+'?'+new URLSearchParams(p));
+  renderItems();
 }
 
 function jsonpShipSlow(params){
@@ -1480,9 +1495,14 @@ function renderItems(){
     if(lineValue !== null){ totalValue += lineValue; valuedCount++; }
 
     const priceTitle = match && match.how==='name' ? ` title="Matchet på navn: ${match.sesuName||''}"` : '';
+    const sesuOpts = sesuProducts.length
+      ? `<option value="">— vælg sesu.dk produkt —</option>` + sesuProducts.map(p=>`<option value="${esc(p.sku)}">${esc(p.name)} (${p.price} kr.)</option>`).join('')
+      : '';
     const priceCell = unitPrice !== null
       ? `<td style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600"${priceTitle}>${unitPrice.toLocaleString('da-DK')} kr.${match.how==='name'?'<span style="font-size:9px;color:var(--ink-3);margin-left:3px">≈</span>':''}</td>`
-      : `<td style="color:var(--ink-3);font-size:11px">${sesuPricesLoaded?'—':'…'}</td>`;
+      : sesuPricesLoaded && sesuProducts.length
+        ? `<td><select style="font-size:11px;max-width:180px;border:1px solid var(--ink-4);border-radius:4px;padding:2px 4px;background:var(--bg);color:var(--ink-2)" onchange="assignSesuSku('${i.id}',this.value)">${sesuOpts}</select></td>`
+        : `<td style="color:var(--ink-3);font-size:11px">…</td>`;
 
     const valueCell = lineValue !== null
       ? `<td style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--blue)">${lineValue.toLocaleString('da-DK')} kr.</td>`
@@ -2147,6 +2167,7 @@ let allProducts = [];
 let allPriceStats = {};
 let sesuPrices = {};
 let sesuByName = {};
+let sesuProducts = []; // [{sku, price, name}] sorted by name
 let sesuPricesLoaded = false;
 
 async function loadPriser(){
