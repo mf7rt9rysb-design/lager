@@ -234,29 +234,49 @@ function getProducts(p) {
 
 function getSesuPrices() {
   var cache = CacheService.getScriptCache();
-  var cached = cache.get('sesu_prices');
+  var cached = cache.get('sesu_prices_v2');
   if (cached) return JSON.parse(cached);
 
-  var prices = {};
+  var products = {};
+  var fullPattern = /data-gtm4wp_product_data=&quot;\{([^"]+)\}&quot;/g;
+  var skuPricePattern = /&quot;sku&quot;:&quot;([^&]*)&quot;,&quot;price&quot;:([0-9.]+)/;
+  var namePattern = /&quot;item_name&quot;:&quot;([^&]*)&quot;/;
+
   for (var page = 1; page <= 12; page++) {
     var url = 'https://sesu.dk/shop/page/' + page + '/';
     var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
     var html = res.getContentText();
     if (res.getResponseCode() !== 200 || html.indexOf('sku&quot;') === -1) break;
-    var matches = html.match(/sku&quot;:&quot;([^&]*)&quot;,&quot;price&quot;:([0-9.]+)/g);
-    if (!matches) continue;
-    for (var i = 0; i < matches.length; i++) {
-      var m = matches[i].match(/sku&quot;:&quot;([^&]*)&quot;,&quot;price&quot;:([0-9.]+)/);
-      if (m) {
-        var sku = m[1].trim();
-        var price = parseFloat(m[2]);
-        if (sku && !isNaN(price)) prices[sku] = price;
+
+    // Extract full product blobs to get both sku+name+price
+    // Attribute format: data-gtm4wp_product_data="{&quot;...&quot;}"
+    var blobs = html.match(/data-gtm4wp_product_data="\{[^"]+\}"/g) || [];
+    for (var i = 0; i < blobs.length; i++) {
+      var blob = blobs[i];
+      var mSku = blob.match(/&quot;sku&quot;:&quot;([^&]*)&quot;/);
+      var mPrice = blob.match(/&quot;price&quot;:([0-9.]+)/);
+      var mName = blob.match(/&quot;item_name&quot;:&quot;([^&]*)&quot;/);
+      if (!mSku || !mPrice) continue;
+      var sku = mSku[1].trim();
+      var price = parseFloat(mPrice[1]);
+      var name = mName ? mName[1] : '';
+      if (sku && !isNaN(price)) {
+        products[sku] = { price: price, name: name };
+      }
+    }
+
+    // Fallback: also grab any sku+price not caught by blob pattern
+    var fallbacks = html.match(/sku&quot;:&quot;([^&]*)&quot;,&quot;price&quot;:([0-9.]+)/g) || [];
+    for (var j = 0; j < fallbacks.length; j++) {
+      var m = fallbacks[j].match(/sku&quot;:&quot;([^&]*)&quot;,&quot;price&quot;:([0-9.]+)/);
+      if (m && m[1] && !products[m[1].trim()]) {
+        products[m[1].trim()] = { price: parseFloat(m[2]), name: '' };
       }
     }
   }
-  // Cache i 6 timer
-  cache.put('sesu_prices', JSON.stringify(prices), 21600);
-  return prices;
+
+  cache.put('sesu_prices_v2', JSON.stringify(products), 21600);
+  return products;
 }
 
 function getPricingStats() {
