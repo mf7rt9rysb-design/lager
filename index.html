@@ -1281,16 +1281,44 @@ function renderOverview(){
     const label = MONTHS[(m.month - 1)] + ' ' + m.year;
     const avgFmt = m.month_avg.toLocaleString('da-DK', {minimumFractionDigits:2, maximumFractionDigits:2});
     const totalFmt = m.month_total.toLocaleString('da-DK', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+    // ── Forudsigelse for næste måned ──
+    const now = new Date();
+    const daysElapsed = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+    const daysInNext  = new Date(now.getFullYear(), now.getMonth()+2, 0).getDate();
+    const nextMonthName = MONTHS[now.getMonth() === 11 ? 0 : now.getMonth()+1];
+    const dailyRate = m.month_count / daysElapsed;
+    const projectedFromPace = dailyRate * daysInNext;
+
+    // Vejt historik (hvis tilgængeligt) mod aktuel pace
+    let predicted = projectedFromPace;
+    if (lastChartData && lastChartData.length >= 3) {
+      const complete = lastChartData.slice(0, -1); // alle undtagen indeværende
+      const histAvg = complete.reduce((s, mo) => s + mo.count, 0) / complete.length;
+      predicted = projectedFromPace * 0.6 + histAvg * 0.4;
+    }
+    const predictedRound = Math.round(predicted);
+    const completePct = Math.round((daysElapsed / daysInMonth) * 100);
+    const predictedAvgKr = m.month_avg > 0
+      ? (predictedRound * m.month_avg).toLocaleString('da-DK', {maximumFractionDigits:0}) + ' kr.'
+      : '—';
+
     monthlyHtml = `
       <div class="stat-card blue">
         <div class="stat-label">Forsendelser — ${label}</div>
         <div class="stat-value">${String(m.month_count).padStart(2,'0')}</div>
-        <div class="stat-detail">${totalFmt} kr. i alt</div>
+        <div class="stat-detail">${totalFmt} kr. · ${completePct}% af måneden</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Gns. fragtpris — ${label}</div>
         <div class="stat-value" style="font-size:20px">${avgFmt}</div>
         <div class="stat-detail">kr. per forsendelse</div>
+      </div>
+      <div class="stat-card" style="border-left:3px solid var(--blue);opacity:.85">
+        <div class="stat-label">Forventet — ${nextMonthName}</div>
+        <div class="stat-value" style="font-size:20px">~${predictedRound}</div>
+        <div class="stat-detail">≈ ${predictedAvgKr} samlet</div>
       </div>`;
   }
 
