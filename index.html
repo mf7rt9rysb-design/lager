@@ -1357,16 +1357,28 @@ function wordScore(a, b){
   return union > 0 ? common / union : 0;
 }
 
+// Detect product category from name to avoid cross-category false matches
+function productCategory(n){
+  const s = n.toLowerCase();
+  if(s.includes('hairpin')) return 'hairpin';
+  if(s.includes('bordben') || s.includes('bordben')) return 'bordben';
+  if(s.includes('butterfly')) return 'butterfly';
+  return 'other';
+}
+
 function findSesuPrice(itemName, itemSku){
   // 1) exact SKU match
   const sku = (itemSku||'').trim();
   if(sku && sesuPrices[sku] !== undefined) return { price: sesuPrices[sku], how:'sku' };
-  // 2) name-based match via word overlap (Jaccard ≥ 0.28, min 2 common words)
+  // 2) name-based match via word overlap (Jaccard ≥ 0.28)
   const nn = normName(itemName);
   if(!nn) return null;
   if(sesuByName[nn]) return { price: sesuByName[nn].price, sesuName: sesuByName[nn].name, how:'name' };
+  const itemCat = productCategory(itemName);
   let bestScore = 0, bestEntry = null;
   for(const sn in sesuByName){
+    // Only match within same product category to prevent hairpin→bordben cross-matches
+    if(itemCat !== 'other' && productCategory(sesuByName[sn].name) !== itemCat) continue;
     const score = wordScore(nn, sn);
     if(score > bestScore){ bestScore = score; bestEntry = sesuByName[sn]; }
   }
