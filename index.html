@@ -233,14 +233,15 @@ body {
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 18px 32px;
+  gap: 16px;
+  padding: 12px 32px;
   border-bottom: 1px solid var(--border);
   background: var(--white);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 100;
 }
+.topbar-title { flex-shrink: 0; }
 .page-title {
   font-size: 16px;
   font-weight: 600;
@@ -253,7 +254,35 @@ body {
   margin-top: 2px;
   font-family: 'IBM Plex Mono', monospace;
 }
-.topbar-actions { display: flex; gap: 8px; align-items: center; }
+.ai-search-wrap {
+  flex: 1;
+  position: relative;
+  max-width: 420px;
+}
+.ai-search-icon {
+  position: absolute;
+  left: 11px; top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.ai-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px 8px 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.ai-search-input::placeholder { color: var(--ink-3); }
+.ai-search-input:focus { border-color: var(--ink-3); background: var(--white); box-shadow: 0 0 0 3px rgba(15,14,12,.06); }
+.topbar-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 .content { padding: 28px 32px; }
 
 /* ── BUTTONS ── */
@@ -758,18 +787,14 @@ tbody tr:hover td { background: var(--surface); }
   body { padding-bottom: 64px; }
   .toast { bottom: 80px; right: 16px; }
   .ai-fab { display: none !important; }
+  .ai-search-wrap { max-width: none; }
   .ai-panel {
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    width: 100%;
+    top: 0; border-radius: 0 0 14px 14px;
     max-height: 80dvh;
-    border-radius: 20px 20px 0 0;
-    border-bottom: none;
-    transform: translateY(100%);
+    transform: translateY(-100%);
     opacity: 1;
   }
   .ai-panel.open { transform: translateY(0); }
-  .ai-panel-head { border-radius: 20px 20px 0 0; }
 }
 @media (max-width: 600px) {
   .content { padding: 12px; }
@@ -1041,9 +1066,15 @@ tbody tr:hover td { background: var(--surface); }
   <!-- MAIN -->
   <main class="main">
     <div class="topbar">
-      <div>
+      <div class="topbar-title">
         <div class="page-title" id="page-title">Oversigt</div>
         <div class="page-sub" id="page-sub">Henter data…</div>
+      </div>
+      <div class="ai-search-wrap">
+        <span class="ai-search-icon">✦</span>
+        <input class="ai-search-input" id="ai-search-input" placeholder="Spørg lager-assistenten…"
+          onfocus="openAI()"
+          onkeydown="if(event.key==='Enter'&&this.value.trim()){sendAIFromSearch(this.value);this.value=''}else if(event.key==='Escape'){closeAI();this.blur()}">
       </div>
       <div class="topbar-actions">
         <button class="btn btn-ghost btn-sm" id="dark-toggle" onclick="toggleDark()" title="Mørk/lys tilstand">☀</button>
@@ -2474,12 +2505,21 @@ function toggleDark(){
 
 // ── KEYBOARD SHORTCUTS ──
 document.addEventListener('keydown', e => {
+  if(e.key==='Escape'){ closeModal(); closeAI(); return; }
   if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT') return;
   if(e.key==='/' || e.key==='s'){ e.preventDefault(); showTab('varer'); setTimeout(()=>document.getElementById('search')?.focus(),100); }
   if(e.key==='n' || e.key==='N'){ openItemModal(null,null); }
   if(e.key==='r' || e.key==='R'){ loadAll(); }
-  if(e.key==='Escape'){ closeModal(); }
   if(e.key==='d' || e.key==='D'){ toggleDark(); }
+  if(e.key==='a' || e.key==='A'){ e.preventDefault(); document.getElementById('ai-search-input')?.focus(); }
+});
+
+// Luk AI panel ved klik udenfor
+document.addEventListener('click', e => {
+  if(!aiOpen) return;
+  const panel = document.getElementById('ai-panel');
+  const inp   = document.getElementById('ai-search-input');
+  if(panel && !panel.contains(e.target) && e.target !== inp) closeAI();
 });
 
 // ── CSV EXPORT ──
@@ -2654,45 +2694,28 @@ setInterval(()=>{ if(sessionStorage.getItem('lager_token')) loadMonthlyHistory()
 
 <!-- ── CLAUDE CHAT ── -->
 <style>
-.ai-fab {
-  position: fixed;
-  bottom: 28px; right: 28px;
-  width: 52px; height: 52px;
-  background: var(--ink);
-  border-radius: 50%;
-  border: none;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 20px rgba(0,0,0,.25);
-  z-index: 300;
-  transition: transform .15s, box-shadow .15s;
-  font-size: 22px;
-}
-.ai-fab:hover { transform: scale(1.08); box-shadow: 0 6px 28px rgba(0,0,0,.3); }
-.ai-fab .fab-icon { transition: transform .2s; }
-.ai-fab.open .fab-icon { transform: rotate(45deg); }
+.ai-fab { display: none !important; }
 
 .ai-panel {
   position: fixed;
-  bottom: 92px; right: 28px;
-  width: 380px;
-  max-height: 560px;
+  top: 57px; left: 0; right: 0;
+  width: 100%;
+  max-height: calc(100vh - 57px);
   background: var(--white);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: 0 16px 56px rgba(0,0,0,.18);
-  z-index: 299;
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(0,0,0,.12);
+  z-index: 99;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   opacity: 0;
-  transform: translateY(16px) scale(.97);
+  transform: translateY(-8px);
   pointer-events: none;
-  transition: opacity .2s, transform .2s;
+  transition: opacity .18s, transform .18s;
 }
 .ai-panel.open {
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translateY(0);
   pointer-events: all;
 }
 .ai-panel-head {
@@ -2836,19 +2859,16 @@ setInterval(()=>{ if(sessionStorage.getItem('lager_token')) loadMonthlyHistory()
 }
 </style>
 
-<button class="ai-fab" id="ai-fab" onclick="toggleAI()" title="Spørg din lager-assistent" aria-label="Åbn AI-assistent">
-  <span class="fab-icon">✦</span>
-</button>
-
 <div class="ai-panel" id="ai-panel" aria-label="AI lager-assistent">
-  <div class="ai-panel-head">
+  <div class="ai-panel-head" style="display:flex;align-items:center;gap:10px;padding:12px 20px;border-bottom:1px solid var(--border-light);background:var(--ink)">
     <div class="ai-avatar">✦</div>
     <div style="flex:1">
       <div class="ai-title">Lager-assistent</div>
       <div class="ai-sub">Kender dit aktuelle lager</div>
     </div>
+    <button onclick="closeAI()" style="background:none;border:none;cursor:pointer;color:rgba(255,255,255,.6);font-size:18px;line-height:1;padding:4px 8px" title="Luk">✕</button>
   </div>
-  <div class="ai-messages" id="ai-messages">
+  <div class="ai-messages" id="ai-messages" style="max-height:380px;overflow-y:auto">
     <div class="ai-msg assistant">Hej! Jeg kender dit lager og kan hjælpe dig med overblik, planlægning og opstilling. Hvad vil du vide?</div>
   </div>
   <div class="ai-suggestions" id="ai-suggestions">
@@ -2858,7 +2878,7 @@ setInterval(()=>{ if(sessionStorage.getItem('lager_token')) loadMonthlyHistory()
     <button class="ai-suggestion" onclick="askSuggestion('Hvordan bør jeg organisere mine rum mest overskueligt?')">Organiser rum</button>
   </div>
   <div class="ai-input-row">
-    <textarea id="ai-input" placeholder="Stil et spørgsmål om dit lager…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAI()}" oninput="autoResize(this)"></textarea>
+    <textarea id="ai-input" placeholder="Stil et spørgsmål om dit lager…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAI()}else if(event.key==='Escape'){closeAI()}" oninput="autoResize(this)"></textarea>
     <button class="ai-send" id="ai-send" onclick="sendAI()" aria-label="Send">→</button>
   </div>
 </div>
@@ -2869,15 +2889,34 @@ let aiHistory = [];
 let aiThinking = false;
 
 
-function toggleAI(){
-  aiOpen = !aiOpen;
-  document.getElementById('ai-fab').classList.toggle('open', aiOpen);
-  document.getElementById('ai-panel').classList.toggle('open', aiOpen);
+function openAI(){
+  if(aiOpen) return;
+  aiOpen = true;
+  document.getElementById('ai-panel').classList.add('open');
   const mnavAI = document.getElementById('mnav-ai');
-  if(mnavAI) mnavAI.classList.toggle('active', aiOpen);
-  if(aiOpen){
-    setTimeout(()=>document.getElementById('ai-input').focus(), 220);
-  }
+  if(mnavAI) mnavAI.classList.add('active');
+  setTimeout(()=>document.getElementById('ai-input').focus(), 180);
+}
+
+function closeAI(){
+  aiOpen = false;
+  document.getElementById('ai-panel').classList.remove('open');
+  const mnavAI = document.getElementById('mnav-ai');
+  if(mnavAI) mnavAI.classList.remove('active');
+  const si = document.getElementById('ai-search-input');
+  if(si) si.blur();
+}
+
+function toggleAI(){
+  aiOpen ? closeAI() : openAI();
+}
+
+function sendAIFromSearch(txt){
+  openAI();
+  setTimeout(()=>{
+    const ta = document.getElementById('ai-input');
+    if(ta){ ta.value = txt; sendAI(); }
+  }, 200);
 }
 
 function autoResize(ta){
