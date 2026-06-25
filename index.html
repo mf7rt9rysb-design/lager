@@ -1811,15 +1811,15 @@ function renderShipments(ships){
     const date = s.created_at ? new Date(s.created_at).toLocaleDateString('da-DK',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
     const tracking = s.parcels?.[0]?.pkg_no || s.parcels?.[0]?.id || s.tracking_number || '—';
     const trackUrl = s.parcels?.[0]?.tracking_link || null;
-    const state = s.state || 'unknown';
+    const state = s.state || 'created';
     const stateLabel = {
       'created':'Oprettet','in_transit':'Under transport','transit':'Under transport',
-      'delivered':'Leveret','returned':'Returneret'
-    }[state] || state;
+      'delivered':'Leveret','returned':'Returneret','unknown':'Oprettet'
+    }[state] || 'Oprettet';
     const stateClass = {
       'created':'created','in_transit':'transit','transit':'transit',
       'delivered':'delivered','returned':'returned'
-    }[state] || 'unknown';
+    }[state] || 'created';
 
     return `<tr>
       <td style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-3)">${esc(s.id||'—')}</td>
