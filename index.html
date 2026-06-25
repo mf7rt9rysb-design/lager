@@ -1154,6 +1154,27 @@ function renderOverview(){
   const low = items.filter(i=>parseInt(i.qty||0)<parseInt(i.minQty||0));
   const cats = [...new Set(items.map(i=>i.cat))].length;
 
+  let balanceHtml = '';
+  if(shipBalanceAmt !== null){
+    if(typeof shipBalanceAmt === 'number'){
+      const balFmt = shipBalanceAmt.toLocaleString('da-DK',{minimumFractionDigits:2,maximumFractionDigits:2});
+      const balColor = shipBalanceAmt < 100 ? 'var(--red)' : 'var(--ink)';
+      const balClass = shipBalanceAmt < 100 ? 'red' : 'green';
+      balanceHtml = `<div class="stat-card ${balClass}">
+        <div class="stat-label">Shipmondo balance</div>
+        <div class="stat-value" style="font-size:20px;color:${balColor}">${balFmt}</div>
+        <div class="stat-detail">kr. til rådighed</div>
+      </div>`;
+    } else {
+      // Unknown structure — show raw JSON for debugging
+      balanceHtml = `<div class="stat-card">
+        <div class="stat-label">Shipmondo balance</div>
+        <div class="stat-value" style="font-size:11px;color:var(--ink-3);font-family:'IBM Plex Mono',monospace;word-break:break-all">${JSON.stringify(shipBalanceAmt).slice(0,120)}</div>
+        <div class="stat-detail">ukendt format</div>
+      </div>`;
+    }
+  }
+
   document.getElementById('stats-grid').innerHTML = `
     <div class="stat-card blue">
       <div class="stat-label">Varenumre</div>
@@ -1174,7 +1195,8 @@ function renderOverview(){
       <div class="stat-label">Lav beholdning</div>
       <div class="stat-value" style="color:${low.length?'var(--red)':'var(--ink)'}">${String(low.length).padStart(2,'0')}</div>
       <div class="stat-detail">${low.length?'kræver genbestilling':'alt over minimum'}</div>
-    </div>`;
+    </div>
+    ${balanceHtml}`;
 
   const rEl = document.getElementById('ov-rooms');
   rEl.innerHTML = rooms.length ? rooms.map(r=>{
@@ -1796,21 +1818,29 @@ async function submitShipment(){
 
 
 // ── BALANCE ──
+let shipBalanceAmt = null;
+
 async function loadBalance(){
+  const sideEl = document.getElementById('ship-balance');
   try {
     const d = await jsonpShip({ action:'getBalance' });
-    const el = document.getElementById('ship-balance');
-    if(!el) return;
-    if(d && (d.balance !== undefined || d.amount !== undefined)){
-      const amt = d.balance ?? d.amount;
-      el.textContent = parseFloat(amt).toLocaleString('da-DK',{minimumFractionDigits:2,maximumFractionDigits:2})+' kr.';
-      el.style.color = parseFloat(amt) < 100 ? '#FF6B6B' : 'rgba(255,255,255,.85)';
-    } else if(d && d.error){
-      el.textContent = 'Fejl';
+    // Try every known field name Shipmondo might return
+    const amt = d?.balance ?? d?.amount ?? d?.available_balance ?? d?.credit ?? null;
+    if(amt !== null && amt !== undefined){
+      shipBalanceAmt = parseFloat(amt);
+      const fmt = shipBalanceAmt.toLocaleString('da-DK',{minimumFractionDigits:2,maximumFractionDigits:2})+' kr.';
+      if(sideEl){
+        sideEl.textContent = fmt;
+        sideEl.style.color = shipBalanceAmt < 100 ? '#FF6B6B' : 'rgba(255,255,255,.85)';
+      }
+    } else {
+      // Unknown structure — store raw for debug
+      shipBalanceAmt = d;
+      if(sideEl) sideEl.textContent = 'Se oversigt';
     }
+    renderOverview(); // refresh stats grid with balance
   } catch(e) {
-    const el = document.getElementById('ship-balance');
-    if(el) el.textContent = 'Fejl';
+    if(sideEl) sideEl.textContent = 'Fejl';
   }
 }
 
