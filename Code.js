@@ -233,14 +233,16 @@ function getProducts(p) {
 
 
 function getSesuPrices() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('sesu_prices');
+  if (cached) return JSON.parse(cached);
+
   var prices = {};
   for (var page = 1; page <= 12; page++) {
     var url = 'https://sesu.dk/shop/page/' + page + '/';
     var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
     var html = res.getContentText();
     if (res.getResponseCode() !== 200 || html.indexOf('sku&quot;') === -1) break;
-
-    // Extract sku + price from encoded JSON in data attributes
     var matches = html.match(/sku&quot;:&quot;([^&]*)&quot;,&quot;price&quot;:([0-9.]+)/g);
     if (!matches) continue;
     for (var i = 0; i < matches.length; i++) {
@@ -252,6 +254,8 @@ function getSesuPrices() {
       }
     }
   }
+  // Cache i 6 timer
+  cache.put('sesu_prices', JSON.stringify(prices), 21600);
   return prices;
 }
 

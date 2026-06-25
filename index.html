@@ -1273,7 +1273,7 @@ async function loadSesuPrices() {
   const statusEl = document.getElementById('sesu-status');
   if(statusEl) statusEl.textContent = '⟳';
   try {
-    const d = await jsonpShip({ action:'getSesuPrices' });
+    const d = await jsonpShipSlow({ action:'getSesuPrices' });
     if(d && !d.error) {
       sesuPrices = d;
       sesuPricesLoaded = true;
@@ -1285,6 +1285,22 @@ async function loadSesuPrices() {
   } catch(e) {
     if(statusEl) statusEl.textContent = '';
   }
+}
+
+function jsonpShipSlow(params){
+  const token = sessionStorage.getItem('lager_token') || '';
+  const withToken = {...params, token};
+  return new Promise((resolve, reject) => {
+    const cb = 'shipcb_'+uid();
+    const url = SHIP_API+'?'+new URLSearchParams({...withToken, callback:cb});
+    const s = document.createElement('script');
+    const timer = setTimeout(()=>{ cleanup(); reject(new Error('Timeout')); }, 35000);
+    window[cb] = (data) => { cleanup(); resolve(data); };
+    function cleanup(){ clearTimeout(timer); delete window[cb]; if(s.parentNode) s.parentNode.removeChild(s); }
+    s.onerror = () => { cleanup(); reject(new Error('Script fejl')); };
+    s.src = url;
+    document.head.appendChild(s);
+  });
 }
 
 function catBadge(cat){ return `<span class="badge ${BADGE[cat]||'badge-gray'}">${esc(cat)}</span>`; }
