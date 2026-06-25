@@ -2107,13 +2107,10 @@ async function loadPriser(){
     return;
   }
 
-  // Step 2: load pricing stats in background and refresh
+  // Step 2: load historical pricing stats in background
   try {
     const priceStats = await jsonpShip({ action:'getPricingStats' });
-    if(priceStats && !priceStats.error){
-      allPriceStats = priceStats;
-      renderPriser(allProducts);
-    }
+    if(priceStats && !priceStats.error){ allPriceStats = priceStats; renderPriser(allProducts); }
   } catch(e) { /* ingen priser — OK */ }
 }
 
@@ -2162,7 +2159,7 @@ function renderPriser(products){
             <th style="width:14%">Kode</th>
             <th style="width:14%">Leveringstid</th>
             <th style="width:10%">Fra</th>
-            <th style="width:18%">Din pris (seneste 3 mdr.)</th>
+            <th style="width:18%">Dit snit (seneste 3 mdr.)</th>
             <th style="width:16%">Brug</th>
           </tr></thead>
           <tbody>

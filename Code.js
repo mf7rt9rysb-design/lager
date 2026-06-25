@@ -24,8 +24,8 @@ function doGet(e) {
       result = { error: 'Ikke autoriseret' };
     } else if (action === 'getShipments')         result = getShipments(p);
     else if (action === 'getProducts')     result = getProducts(p);
-    else if (action === 'getPricingStats') result = getPricingStats();
-    else if (action === 'getSesuPrices')  result = getSesuPrices();
+    else if (action === 'getPricingStats')   result = getPricingStats();
+    else if (action === 'getSesuPrices')    result = getSesuPrices();
     else if (action === 'getPrinters')     result = getPrinters();
     else if (action === 'getLabel')        result = getLabel(p.id);
     else if (action === 'createShipment')  result = createShipment(p);
@@ -230,6 +230,7 @@ function getShipments(p) {
 function getProducts(p) {
   return shipmondoRequest('GET', 'products?country_code=' + (p.country || 'DK'));
 }
+
 
 function getSesuPrices() {
   var prices = {};
