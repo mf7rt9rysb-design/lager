@@ -1028,6 +1028,29 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
 .ship-status.unknown  { background: #F0EFEB; color: #7A7774; border-color: rgba(122,119,116,.15); }
 .tracking-link { font-size:11px; font-family:'IBM Plex Mono',monospace; color:var(--blue); text-decoration:none; }
 .tracking-link:hover { text-decoration:underline; }
+
+/* ── HISTORIK DELTA BADGES ── */
+.delta-up {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: -.2px;
+  padding: 2px 8px; border-radius: 5px;
+  background: var(--green-dim); color: var(--green);
+  font-family: 'IBM Plex Mono', monospace;
+}
+.delta-down {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: -.2px;
+  padding: 2px 8px; border-radius: 5px;
+  background: var(--red-dim); color: var(--red);
+  font-family: 'IBM Plex Mono', monospace;
+}
+/* ── PRINT INDKØBSLISTE ── */
+@media print {
+  .sidebar, .mobile-nav, .topbar, .ai-fab, .ai-panel { display:none !important; }
+  .main { margin-left:0 !important; }
+  .btn { display:none !important; }
+  .stats-grid { grid-template-columns:repeat(3,1fr) !important; }
+}
 </style>
 </head>
 <body>
@@ -1079,6 +1102,13 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
       <button class="nav-item" onclick="showTab('priser')" id="nav-priser">
         <span class="nav-icon">💶</span> Fragtpriser
       </button>
+      <div class="nav-label" style="margin-top:14px">Analyse</div>
+      <button class="nav-item" onclick="showTab('indkob')" id="nav-indkob">
+        <span class="nav-icon">🛒</span> Indkøbsliste
+      </button>
+      <button class="nav-item" onclick="showTab('historik')" id="nav-historik">
+        <span class="nav-icon">📋</span> Historik
+      </button>
     </nav>
     <div class="sidebar-footer">
       <div class="sync-row">
@@ -1114,6 +1144,10 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
       <button class="mobile-nav-item" id="mnav-priser" onclick="showTab('priser')" aria-label="Fragtpriser">
         <span class="mnav-icon">💶</span>
         <span>Priser</span>
+      </button>
+      <button class="mobile-nav-item" id="mnav-indkob" onclick="showTab('indkob')" aria-label="Indkøb">
+        <span class="mnav-icon">🛒</span>
+        <span>Indkøb</span>
       </button>
       <button class="mobile-nav-item mobile-nav-ai" id="mnav-ai" onclick="toggleAI()" aria-label="Assistent">
         <span class="mnav-icon">✦</span>
@@ -1219,6 +1253,64 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
         </div>
       </div>
 
+      <!-- INDKØBSLISTE -->
+      <div id="tab-indkob" class="view" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+          <div style="font-size:13px;color:var(--ink-3)">Varer under minimumsbeholdning — klar til genbestilling</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="copyShoppingList()">📋 Kopier liste</button>
+            <button class="btn btn-ghost btn-sm" onclick="window.print()">🖨 Print</button>
+          </div>
+        </div>
+        <div class="stats-grid" id="indkob-stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px"></div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Vare</th>
+                <th>Placering</th>
+                <th style="width:11%">Lager / Min.</th>
+                <th style="width:8%">Mangler</th>
+                <th style="width:11%">Enhedspris</th>
+                <th style="width:11%">Est. kostpris</th>
+                <th style="width:12%"></th>
+              </tr></thead>
+              <tbody id="indkob-tbody">
+                <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--ink-3)">Henter data…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTORIK -->
+      <div id="tab-historik" class="view" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+          <div class="search-input-wrap" style="min-width:220px">
+            <span class="search-icon">⌕</span>
+            <input type="text" id="hist-search" placeholder="Filtrer på varenavn…" oninput="renderHistorik(histEntries)">
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="histLoaded=false;loadHistorik()">⟳ Opdater</button>
+        </div>
+        <div id="hist-loading" style="text-align:center;padding:3rem;color:var(--ink-3);font-size:13px" style="display:none"></div>
+        <div id="hist-content" class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th style="width:16%">Tidspunkt</th>
+                <th>Vare</th>
+                <th style="width:18%">Fra → Til</th>
+                <th style="width:8%">Delta</th>
+                <th style="width:18%">Note</th>
+              </tr></thead>
+              <tbody id="hist-tbody">
+                <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--ink-3)">Ingen bevægelser registreret endnu — begynd at redigere varer for at bygge historik</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <!-- FORSENDELSER -->
       <div id="tab-forsendelser" class="view" style="display:none">
 
@@ -1265,6 +1357,17 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
           <!-- Pagination -->
           <div id="ship-pagination" style="display:flex;gap:8px;justify-content:center;padding:14px;border-top:1px solid var(--border-light)"></div>
         </div>
+
+        <!-- Pakke-skabeloner -->
+        <div class="card" style="margin-top:20px">
+          <div class="card-header">
+            <span class="card-title">Pakke-skabeloner</span>
+            <span style="font-size:11px;color:var(--ink-3)">Genbrugelige pakkesammensætninger</span>
+          </div>
+          <div id="templates-list">
+            <div style="padding:16px 20px;font-size:13px;color:var(--ink-3)">Henter skabeloner…</div>
+          </div>
+        </div>
       </div>
 
       <!-- FRAGTPRISER -->
@@ -1300,9 +1403,11 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
 const API = 'https://script.google.com/macros/s/AKfycbwdbhEo-na7UVPQ4raRAz22NhVxFzE8YvdyK1u06iTTKd4PDbdlQLU1jgHjhubgIUYZjw/exec';
 const CATS = ['Bordben','Beslag','Hyldeplader','Skruer & bolte','Møbelben','Hjul & gliders','Andet'];
 const BADGE = { Bordben:'badge-blue', Beslag:'badge-green', Hyldeplader:'badge-amber', 'Skruer & bolte':'badge-gray', Møbelben:'badge-blue', 'Hjul & gliders':'badge-green', Andet:'badge-gray' };
-const TITLES = { oversigt:'Oversigt', varer:'Alle varer', rum:'Rum & zoner', forsendelser:'Forsendelser', priser:'Fragtpriser' };
+const TITLES = { oversigt:'Oversigt', varer:'Alle varer', rum:'Rum & zoner', forsendelser:'Forsendelser', priser:'Fragtpriser', indkob:'Indkøbsliste', historik:'Historik' };
 
 let items=[], rooms=[], selRoom=null, activeCat='Alle';
+let allTemplates=[], templatesLoaded=false;
+let histEntries=[], histLoaded=false;
 let autoTimer = null;
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
@@ -1353,7 +1458,7 @@ async function loadAll(quiet){
   }
 }
 
-function renderAll(){ renderOverview(); renderItems(); renderRooms(); }
+function renderAll(){ renderOverview(); renderItems(); renderRooms(); renderIndkob(); }
 
 let _sesuPricesPromise = null;
 async function loadSesuPrices() {
@@ -1820,6 +1925,7 @@ function openItemModal(id, preRoom){
             <button class="qty-btn" onclick="adjQ(-1)">−</button>
             <span class="qty-val" id="q-d">${qty}</span>
             <input type="hidden" id="f-qty" value="${qty}">
+            <input type="hidden" id="f-orig-qty" value="${qty}">
             <button class="qty-btn" onclick="adjQ(1)">+</button>
           </div>
         </div>
@@ -1839,16 +1945,26 @@ function adjQ(d){ const i=document.getElementById('f-qty'), v=Math.max(0,parseIn
 async function saveItem(id, edit){
   const name = document.getElementById('f-name').value.trim();
   if(!name) return alert('Angiv et varenavn');
+  const origQty = parseInt(document.getElementById('f-orig-qty')?.value ?? '-1');
+  const newQty  = parseInt(document.getElementById('f-qty').value);
   const p = { action:'saveItem', id:id||uid(), name,
     cat:document.getElementById('f-cat').value,
     room:document.getElementById('f-room').value,
     shelf:document.getElementById('f-shelf').value.trim(),
-    qty:document.getElementById('f-qty').value,
+    qty:newQty,
     minQty:document.getElementById('f-minq').value,
     sku:document.getElementById('f-sku').value.trim(),
     note:document.getElementById('f-note').value.trim() };
   closeModal(); sync('load','Gemmer…');
-  try { const r=await jsonp(p); if(r.error) throw new Error(r.error); toast('Vare gemt'); await loadAll(); }
+  try {
+    const r=await jsonp(p);
+    if(r.error) throw new Error(r.error);
+    if(edit && origQty >= 0 && origQty !== newQty){
+      jsonp({ action:'logMovement', item_id:p.id, item_name:name, from_qty:origQty, to_qty:newQty, note:'' }).catch(()=>{});
+      histLoaded = false;
+    }
+    toast('Vare gemt'); await loadAll();
+  }
   catch(e){ sync('err','Fejl'); showErr('Kunne ikke gemme: '+e.message); }
 }
 
@@ -1898,9 +2014,9 @@ async function delRoom(id){
 }
 
 function showTab(t){
-  const VALID = new Set(['oversigt','varer','rum','forsendelser','priser']);
+  const VALID = new Set(['oversigt','varer','rum','forsendelser','priser','indkob','historik']);
   if(!VALID.has(t)) t = 'oversigt';
-  ['oversigt','varer','rum','forsendelser','priser'].forEach(n=>{
+  ['oversigt','varer','rum','forsendelser','priser','indkob','historik'].forEach(n=>{
     const el = document.getElementById('tab-'+n);
     if(el) el.style.display = n===t ? 'block' : 'none';
     const nav = document.getElementById('nav-'+n);
@@ -1911,14 +2027,16 @@ function showTab(t){
   const mnavAI = document.getElementById('mnav-ai');
   if(mnavAI) mnavAI.classList.remove('active');
   document.getElementById('page-title').textContent = TITLES[t] || t;
-  // Persist active tab in URL hash and localStorage
   history.replaceState(null,'','#'+t);
   localStorage.setItem('activeTab', t);
   window.scrollTo(0,0);
   resetInactivityTimer();
   const priceReady = loadSesuPrices();
   if(t === 'forsendelser' && !shipLoaded) priceReady.then(()=>{ if(!shipLoaded) loadShipments(); });
+  if(t === 'forsendelser' && !templatesLoaded) loadTemplates();
   if(t === 'priser' && !prisLoaded) loadPriser();
+  if(t === 'indkob') priceReady.then(()=>renderIndkob());
+  if(t === 'historik' && !histLoaded) loadHistorik();
 }
 
 function openModal(){ document.getElementById('mb').classList.add('open'); resetInactivityTimer(); }
@@ -2661,6 +2779,7 @@ async function doLogin() {
       loadBalance();
       loadMonthlyStats();
       loadMonthlyHistory();
+      loadTemplates();
     } else {
       loginAttempts++;
       err.textContent = 'Forkert kode — prøv igen';
@@ -2712,7 +2831,7 @@ if (sessionStorage.getItem('lager_auth') === '1') {
   resetInactivityTimer();
   // Gendan aktiv fane fra URL-hash eller localStorage
   window.addEventListener('DOMContentLoaded', () => {
-    const VALID = new Set(['oversigt','varer','rum','forsendelser','priser']);
+    const VALID = new Set(['oversigt','varer','rum','forsendelser','priser','indkob','historik']);
     const fromHash = location.hash.replace('#','');
     const saved = VALID.has(fromHash) ? fromHash : (localStorage.getItem('activeTab') || 'oversigt');
     if(saved !== 'oversigt') showTab(saved);
@@ -2782,6 +2901,235 @@ function exportCSV(){
   a.href=url; a.download='lager-'+new Date().toISOString().slice(0,10)+'.csv';
   a.click(); URL.revokeObjectURL(url);
   toast('CSV downloadet');
+}
+
+// ── INDKØBSLISTE ──
+function renderIndkob(){
+  const el = document.getElementById('tab-indkob');
+  if(!el || el.style.display==='none') return;
+
+  const low = items.filter(i=>parseInt(i.qty||0)<parseInt(i.minQty||0));
+  const out  = low.filter(i=>parseInt(i.qty||0)===0);
+  const lowS = low.filter(i=>parseInt(i.qty||0)>0);
+
+  let totalCost=0, costedCount=0;
+  low.forEach(i=>{
+    const need=parseInt(i.minQty||0)-parseInt(i.qty||0);
+    const match=sesuPricesLoaded?findSesuPrice(i.name,i.sku):null;
+    if(match){ totalCost+=match.price*need; costedCount++; }
+  });
+
+  const statsEl=document.getElementById('indkob-stats');
+  if(statsEl) statsEl.innerHTML=`
+    <div class="stat-card${low.length?'':' green'}">
+      <div class="stat-label">Mangler i alt</div>
+      <div class="stat-value">${String(low.length).padStart(2,'0')}</div>
+      <div class="stat-detail">${out.length} udsolgt · ${lowS.length} lav beholdning</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Samlet enheder</div>
+      <div class="stat-value">${low.reduce((s,i)=>s+Math.max(0,parseInt(i.minQty||0)-parseInt(i.qty||0)),0)}</div>
+      <div class="stat-detail">enheder skal genbestilles</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Est. kostpris</div>
+      <div class="stat-value" style="font-size:${totalCost>99999?'16px':'20px'}">${totalCost>0?totalCost.toLocaleString('da-DK')+' kr.':'—'}</div>
+      <div class="stat-detail">${costedCount>0?'baseret på '+costedCount+' sesu.dk priser':'hent priser under Alle varer'}</div>
+    </div>`;
+
+  const tbody=document.getElementById('indkob-tbody');
+  if(!tbody) return;
+
+  if(!low.length){
+    tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="empty-icon">✓</div><div class="empty-text">Alt er over minimumsbeholdning</div></div></td></tr>';
+    return;
+  }
+
+  function rowHtml(i){
+    const need=Math.max(0,parseInt(i.minQty||0)-parseInt(i.qty||0));
+    const r=rooms.find(r=>r.id===i.room);
+    const match=sesuPricesLoaded?findSesuPrice(i.name,i.sku):null;
+    const unitPrice=match?match.price:null;
+    const lineCost=unitPrice?unitPrice*need:null;
+    const sesuLink=match&&match.url?`<a href="${match.url}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="font-size:10px">↗ sesu.dk</a>`:'';
+    const qty=parseInt(i.qty||0);
+    return `<tr>
+      <td><div class="td-name">${esc(i.name)}</div>${catBadge(i.cat)}</td>
+      <td style="font-size:12px;color:var(--ink-3)">${r?esc(r.name)+' · ':''}<span style="font-family:'IBM Plex Mono',monospace">${esc(i.shelf)}</span></td>
+      <td style="font-family:'IBM Plex Mono',monospace;color:${qty===0?'var(--red)':'var(--amber)'}">${qty===0?'Udsolgt':esc(i.qty)+' / '+esc(i.minQty)}</td>
+      <td><span class="delta-down">+${need}</span></td>
+      <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--blue)">${unitPrice?unitPrice.toLocaleString('da-DK')+' kr.':'—'}</td>
+      <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600">${lineCost?lineCost.toLocaleString('da-DK')+' kr.':'—'}</td>
+      <td><div class="td-actions">${sesuLink}<button class="btn btn-ghost btn-sm" onclick="openItemModal('${i.id}',null)">Rediger</button></div></td>
+    </tr>`;
+  }
+
+  let html='';
+  if(out.length){
+    html+=`<tr><td colspan="7" style="padding:8px 16px 4px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--red);background:var(--surface)">Udsolgt (${out.length})</td></tr>`;
+    html+=out.map(rowHtml).join('');
+  }
+  if(lowS.length){
+    html+=`<tr><td colspan="7" style="padding:8px 16px 4px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);background:var(--surface)">Lav beholdning (${lowS.length})</td></tr>`;
+    html+=lowS.map(rowHtml).join('');
+  }
+  tbody.innerHTML=html;
+}
+
+function copyShoppingList(){
+  const low=items.filter(i=>parseInt(i.qty||0)<parseInt(i.minQty||0));
+  if(!low.length){ toast('Ingen varer mangler'); return; }
+  const lines=low.map(i=>{
+    const need=parseInt(i.minQty||0)-parseInt(i.qty||0);
+    const r=rooms.find(r=>r.id===i.room);
+    const match=sesuPricesLoaded?findSesuPrice(i.name,i.sku):null;
+    const priceStr=match?' @ '+match.price.toLocaleString('da-DK')+' kr./stk':'';
+    return `• ${i.name} — bestil ${need} stk${priceStr}${r?' ('+r.name+')':''}`;
+  });
+  const text='Indkøbsliste '+new Date().toLocaleDateString('da-DK')+':\n\n'+lines.join('\n');
+  navigator.clipboard.writeText(text).then(()=>toast('Indkøbsliste kopieret ✓')).catch(()=>toast('Kopiering fejlede'));
+}
+
+// ── HISTORIK ──
+async function loadHistorik(){
+  if(histLoaded) return;
+  const loadingEl=document.getElementById('hist-loading');
+  const contentEl=document.getElementById('hist-content');
+  if(loadingEl){ loadingEl.style.display='block'; loadingEl.textContent='Henter historik…'; }
+  if(contentEl) contentEl.style.display='none';
+  try {
+    const d=await jsonp({ action:'getHistory', limit:200 });
+    if(d.error) throw new Error(d.error);
+    histEntries=d.entries||[];
+    histLoaded=true;
+    if(loadingEl) loadingEl.style.display='none';
+    if(contentEl) contentEl.style.display='block';
+    renderHistorik(histEntries);
+  } catch(e){
+    if(loadingEl){ loadingEl.style.display='block'; loadingEl.textContent='Fejl: '+e.message; }
+  }
+}
+
+function renderHistorik(entries){
+  const q=(document.getElementById('hist-search')?.value||'').toLowerCase();
+  const fil=q?entries.filter(e=>(e.item_name||'').toLowerCase().includes(q)):entries;
+  const tbody=document.getElementById('hist-tbody');
+  if(!tbody) return;
+  if(!fil.length){
+    tbody.innerHTML='<tr><td colspan="5"><div class="empty"><div class="empty-icon">📋</div><div class="empty-text">'+(entries.length?'Ingen resultater for din søgning':'Ingen bevægelser endnu — begynd at redigere varer')+'</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML=fil.slice(0,200).map(e=>{
+    const from=parseInt(e.from_qty||0), to=parseInt(e.to_qty||0), delta=to-from;
+    const deltaHtml=delta>0?`<span class="delta-up">+${delta}</span>`:delta<0?`<span class="delta-down">${delta}</span>`:`<span class="badge badge-gray">±0</span>`;
+    let ts='—';
+    try{ ts=new Date(e.ts).toLocaleString('da-DK',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }catch(x){}
+    const item=items.find(i=>i.id===e.item_id);
+    return `<tr>
+      <td style="font-size:12px;color:var(--ink-3);font-family:'IBM Plex Mono',monospace;white-space:nowrap">${esc(ts)}</td>
+      <td><div class="td-name" style="cursor:pointer" onclick="openItemModal('${esc(e.item_id)}',null)">${esc(e.item_name||'—')}</div>${item?catBadge(item.cat):''}</td>
+      <td style="font-family:'IBM Plex Mono',monospace;font-size:12px">${esc(e.from_qty)} → ${esc(e.to_qty)}</td>
+      <td>${deltaHtml}</td>
+      <td style="font-size:12px;color:var(--ink-3)">${esc(e.note||'')}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── SKABELONER ──
+async function loadTemplates(){
+  if(templatesLoaded) return;
+  try {
+    const d=await jsonp({ action:'getTemplates' });
+    if(d.error) throw new Error(d.error);
+    allTemplates=Array.isArray(d)?d:[];
+    templatesLoaded=true;
+    renderTemplates();
+  } catch(e){ /* silent */ }
+}
+
+function renderTemplates(){
+  const el=document.getElementById('templates-list');
+  if(!el) return;
+  if(!allTemplates.length){
+    el.innerHTML='<div style="padding:16px 20px;font-size:13px;color:var(--ink-3)">Ingen skabeloner endnu — gem en pakkesammensætning via <strong>💾 Gem som skabelon</strong> i et pakkeindhold.</div>';
+    return;
+  }
+  el.innerHTML=allTemplates.map(t=>{
+    let parsedItems=[];
+    try{ parsedItems=t.items||[]; }catch(e){}
+    const value=parsedItems.reduce((s,e)=>{
+      const it=items.find(i=>i.id===e.id);
+      const pr=it?findSesuPrice(it.name,it.sku):null;
+      return s+(e.price||(pr?pr.price:0))*e.qty;
+    },0);
+    const preview=parsedItems.slice(0,3).map(e=>{ const it=items.find(i=>i.id===e.id); return it?`<span style="font-size:11px;color:var(--ink-3)">${e.qty}× ${esc(it.name)}</span>`:null; }).filter(Boolean).join('');
+    const more=parsedItems.length>3?`<span style="font-size:11px;color:var(--ink-3)">+${parsedItems.length-3} mere</span>`:'';
+    return `<div class="list-row">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600;margin-bottom:4px">${esc(t.name||'Unavngivet')} <span class="badge badge-gray">${parsedItems.length} vare${parsedItems.length===1?'':'r'}</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${preview}${more}</div>
+      </div>
+      <div style="font-size:12px;font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--blue);margin-right:12px">${value>0?value.toLocaleString('da-DK')+' kr.':'—'}</div>
+      <div class="td-actions">
+        <button class="btn btn-danger btn-sm" onclick="deleteTemplateFn('${esc(t.id)}')">Slet</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function applyTemplate(id){
+  const tpl=allTemplates.find(t=>t.id===id);
+  if(!tpl) return;
+  let rows=[];
+  try{ rows=(tpl.items||[]).map(e=>({...e})); }catch(e){}
+  if(!rows.length){ toast('Skabelon er tom'); return; }
+  window.pkgModalRows=rows;
+  window.pkgRender('');
+  toast('Skabelon anvendt: '+tpl.name);
+}
+
+function openSaveTemplateModal(){
+  const rows=window.pkgModalRows||[];
+  if(!rows.length){ toast('Tilføj varer til pakken først'); return; }
+  document.getElementById('modal-box').innerHTML=`
+    <div class="modal-head">
+      <div class="modal-title">Gem som skabelon</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg"><label>Skabelon-navn</label><input id="tpl-name" placeholder="F.eks. Standard ordrepakke" autofocus></div>
+      <div style="font-size:12px;color:var(--ink-3)">Gemmer ${rows.length} vare${rows.length===1?'':'r'} fra den aktuelle pakkesammensætning.</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Annuller</button>
+      <button class="btn btn-primary" onclick="saveTemplateFn()">Gem skabelon</button>
+    </div>`;
+  openModal();
+  setTimeout(()=>document.getElementById('tpl-name')?.focus(),80);
+}
+
+async function saveTemplateFn(){
+  const name=document.getElementById('tpl-name')?.value.trim();
+  if(!name){ toast('Angiv et navn'); return; }
+  const rows=window.pkgModalRows||[];
+  const p={ action:'saveTemplate', id:uid(), name, items_json:JSON.stringify(rows), note:'', created:new Date().toISOString() };
+  closeModal();
+  try {
+    await jsonp(p);
+    templatesLoaded=false;
+    await loadTemplates();
+    toast('Skabelon gemt: '+name);
+  } catch(e){ toast('Fejl ved gem: '+e.message); }
+}
+
+async function deleteTemplateFn(id){
+  if(!confirm('Slet denne skabelon permanent?')) return;
+  try {
+    await jsonp({ action:'deleteTemplate', id });
+    allTemplates=allTemplates.filter(t=>t.id!==id);
+    renderTemplates();
+    toast('Skabelon slettet');
+  } catch(e){ toast('Fejl: '+e.message); }
 }
 
 // ── QR CODE ──
@@ -2897,12 +3245,20 @@ function openPackageModal(shipId){
   };
 
   const skipChecked = window.pkgSkipDeduction ? 'checked' : '';
+  const tplOpts = allTemplates.map(t=>`<option value="${esc(t.id)}">${esc(t.name||'Unavngivet')}</option>`).join('');
   document.getElementById('modal-box').innerHTML=`
     <div class="modal-head">
       <div class="modal-title">📦 Pakkeindhold — ${esc(String(shipLabel))}</div>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      ${allTemplates.length ? `<div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border-light)">
+        <select id="pkg-tpl-select" style="flex:1;font-size:13px;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--white);color:var(--ink)">
+          <option value="">— vælg skabelon —</option>${tplOpts}
+        </select>
+        <button class="btn btn-sm" onclick="const s=document.getElementById('pkg-tpl-select');if(s.value)applyTemplate(s.value)">Anvend</button>
+        <button class="btn btn-sm btn-ghost" onclick="openSaveTemplateModal()" title="Gem pakken som skabelon">💾</button>
+      </div>` : `<div style="text-align:right;margin-bottom:10px"><button class="btn btn-ghost btn-sm" onclick="openSaveTemplateModal()" title="Gem som skabelon">💾 Gem som skabelon</button></div>`}
       <div id="pkg-items"></div>
       <div style="margin-top:14px">
         <div style="font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Tilføj vare</div>
