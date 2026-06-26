@@ -1989,7 +1989,7 @@ function renderShipments(ships){
       <td style="font-size:12px">${esc(s.product_code||'—')}</td>
       <td style="font-size:12px;color:var(--ink-3)">${esc(s.reference||'—')}</td>
       <td>
-        <div style="font-size:11px;font-family:'IBM Plex Mono',monospace;color:var(--ink-3)">${esc(tracking)}</div>
+        <div style="font-size:11px;font-family:'IBM Plex Mono',monospace;color:${{delivered:'#2D6A2D',transit:'#7A5A1A',returned:'#CC2929'}[stateClass]||'var(--ink-3)'};font-weight:${stateClass==='created'?'400':'600'}">${esc(tracking)}</div>
         ${trackUrl ? `<a href="${trackUrl}" target="_blank" rel="noopener" class="tracking-link" style="font-size:11px">↗ Spor pakke</a>` : ''}
       </td>
       <td style="font-size:12px;color:var(--ink-3)">${esc(date)}</td>
