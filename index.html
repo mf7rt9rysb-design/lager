@@ -1011,7 +1011,7 @@ tbody tr:hover td { background: var(--surface); }
       <button class="nav-item" onclick="showTab('varer')" id="nav-varer">
         <span class="nav-icon">☰</span> Alle varer
       </button>
-      <button class="nav-item" onclick="showTab('rum')" id="nav-rum">
+      <button class="nav-item" onclick="showTab('rum')" id="nav-rum" style="display:none">
         <span class="nav-icon">⬡</span> Rum & zoner
       </button>
       <button class="nav-item" onclick="showTab('forsendelser')" id="nav-forsendelser">
@@ -1044,7 +1044,7 @@ tbody tr:hover td { background: var(--surface); }
         <span class="mnav-icon">☰</span>
         <span>Varer</span>
       </button>
-      <button class="mobile-nav-item" id="mnav-rum" onclick="showTab('rum')" aria-label="Rum">
+      <button class="mobile-nav-item" id="mnav-rum" onclick="showTab('rum')" aria-label="Rum" style="display:none">
         <span class="mnav-icon">⬡</span>
         <span>Rum</span>
       </button>
@@ -1090,13 +1090,7 @@ tbody tr:hover td { background: var(--surface); }
       <!-- OVERSIGT -->
       <div id="tab-oversigt" class="view active">
         <div class="stats-grid" id="stats-grid"></div>
-        <div class="two-col">
-          <div class="card">
-            <div class="card-header"><span class="card-title">Rum oversigt</span></div>
-            <div id="ov-rooms"></div>
-          </div>
-
-        </div>
+        <div class="stats-grid" id="pkg-stats-grid" style="margin-bottom:20px"></div>
         <div class="card" style="margin-bottom:20px">
           <div class="card-header">
             <span class="card-title">Forsendelser — sidste 6 måneder</span>
@@ -1481,12 +1475,7 @@ function renderOverview(){
     <div class="stat-card green">
       <div class="stat-label">Stk. i alt</div>
       <div class="stat-value">${tq.toLocaleString('da')}</div>
-      <div class="stat-detail">på tværs af ${rooms.length} rum</div>
-    </div>
-    <div class="stat-card accent">
-      <div class="stat-label">Rum & zoner</div>
-      <div class="stat-value">${String(rooms.length).padStart(2,'0')}</div>
-      <div class="stat-detail">${items.length} varer fordelt</div>
+      <div class="stat-detail">${items.length} varenumre</div>
     </div>
     <div class="stat-card ${low.length?'red':''}">
       <div class="stat-label">Lav beholdning</div>
@@ -1500,18 +1489,62 @@ function renderOverview(){
       <div class="stat-detail" id="lv-detail">${sesuPricesLoaded ? totalLagervaerdi > 0 ? 'baseret på sesu.dk priser' : 'hent priser under Alle varer' : 'hent priser under Alle varer'}</div>
     </div>`;
 
-  const rEl = document.getElementById('ov-rooms');
-  rEl.innerHTML = rooms.length ? rooms.map(r=>{
-    const cnt = items.filter(i=>i.room===r.id).length;
-    const qty = items.filter(i=>i.room===r.id).reduce((s,i)=>s+parseInt(i.qty||0),0);
-    return `<div class="list-row">
-      <div style="width:32px;height:32px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">▦</div>
-      <div style="flex:1">
-        <div class="list-row-name">${esc(r.name)}${r.size?` <span style="font-weight:400;color:var(--ink-3);font-size:11px">— ${esc(r.size)}</span>`:''}</div>
-        <div class="list-row-sub">${cnt} varenr. · ${qty.toLocaleString('da')} stk.</div>
+  // ── Pakkeværdi solgt denne måned + projektion næste måned ──
+  const pkgStatsEl = document.getElementById('pkg-stats-grid');
+  if(pkgStatsEl && allShips.length){
+    const now = new Date();
+    const thisY = now.getFullYear(), thisM = now.getMonth();
+    const daysElapsed = now.getDate();
+    const daysInMonth = new Date(thisY, thisM+1, 0).getDate();
+    const daysInNext  = new Date(thisY, thisM+2, 0).getDate();
+    const MONTHS = ['jan','feb','mar','apr','maj','jun','jul','aug','sep','okt','nov','dec'];
+
+    const calcPkgValue = (sid) => {
+      const pkg = shipPackageContents[String(sid)] || {};
+      return (pkg.items||[]).reduce((s,e)=>{
+        const it = items.find(i=>i.id===e.id);
+        const pr = it ? findSesuPrice(it.name, it.sku) : null;
+        return s + (pr ? pr.price * e.qty : 0);
+      }, 0);
+    };
+
+    // This month's delivered/transit packages
+    const thisMonthShips = allShips.filter(s=>{
+      if(!s.created_at) return false;
+      const d = new Date(s.created_at);
+      return d.getFullYear()===thisY && d.getMonth()===thisM;
+    });
+    const thisMonthValue = thisMonthShips.reduce((s,ship)=>s+calcPkgValue(ship.id),0);
+
+    // Last month
+    const lastY = thisM===0 ? thisY-1 : thisY, lastM = thisM===0 ? 11 : thisM-1;
+    const lastMonthShips = allShips.filter(s=>{
+      if(!s.created_at) return false;
+      const d = new Date(s.created_at);
+      return d.getFullYear()===lastY && d.getMonth()===lastM;
+    });
+    const lastMonthValue = lastMonthShips.reduce((s,ship)=>s+calcPkgValue(ship.id),0);
+
+    // Projection: daily rate this month × days in next month, blend with last month if available
+    const dailyRate = daysElapsed > 0 ? thisMonthValue / daysElapsed : 0;
+    let projected = dailyRate * daysInNext;
+    if(lastMonthValue > 0) projected = projected * 0.6 + lastMonthValue * 0.4;
+    const projectedFmt = projected > 0 ? '~'+Math.round(projected).toLocaleString('da-DK')+' kr.' : '—';
+
+    pkgStatsEl.innerHTML = `
+      <div class="stat-card blue">
+        <div class="stat-label">Pakkeværdi solgt — ${MONTHS[thisM]}</div>
+        <div class="stat-value" style="font-size:20px;font-family:'IBM Plex Mono',monospace">${thisMonthValue>0?thisMonthValue.toLocaleString('da-DK')+' kr.':'—'}</div>
+        <div class="stat-detail">${thisMonthShips.length} forsendelse${thisMonthShips.length===1?'':'r'} · ${Math.round(daysElapsed/daysInMonth*100)}% af måneden</div>
       </div>
-    </div>`;
-  }).join('') : '<div class="empty"><div class="empty-icon">⬡</div><div class="empty-text">Ingen rum oprettet</div></div>';
+      <div class="stat-card">
+        <div class="stat-label">Forventet pakkeværdi — ${MONTHS[thisM===11?0:thisM+1]}</div>
+        <div class="stat-value" style="font-size:20px;font-family:'IBM Plex Mono',monospace">${projectedFmt}</div>
+        <div class="stat-detail">baseret på aktuel pace${lastMonthValue>0?' + forrige måned':''}</div>
+      </div>`;
+  } else if(pkgStatsEl) {
+    pkgStatsEl.innerHTML = '';
+  }
 
 
 
@@ -1887,6 +1920,7 @@ async function loadShipments(){
     if(d.error) throw new Error(d.error);
     const ships = d.shipments||[];
     renderShipments(ships);
+    renderOverview(); // refresh pakkeværdi stats after ships + contents load
     // Update pagination info
     const pagEl = document.getElementById('ship-pagination');
     if(pagEl){
