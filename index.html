@@ -2627,23 +2627,27 @@ function openPackageModal(shipId){
   const sid = String(shipId);
   const ship = allShips.find(s=>String(s.id)===sid);
   const shipLabel = ship ? (ship.reference||ship.id) : sid;
-  const contents = (shipPackageContents[sid] || []).map(e=>({...e}));
-  // First time opening (no saved contents yet) → default to auto-deduct
-  // Already has contents → already processed, default skip
-  const defaultSkip = contents.length > 0 && (shipPackageContents[sid+'__skip'] === true);
 
-  function calcTotal(rows){
-    return rows.reduce((sum,e)=>{
+  // Only reset rows when opening a different shipment — not on re-render
+  if(window.pkgModalSid !== sid){
+    window.pkgModalSid = sid;
+    window.pkgModalRows = (shipPackageContents[sid] || []).map(e=>({...e}));
+    window.pkgSkipDeduction = shipPackageContents[sid+'__skip'] === true;
+  }
+
+  function pkgCalcTotal(){
+    return (window.pkgModalRows||[]).reduce((sum,e)=>{
       const it = items.find(i=>i.id===e.id);
       const pr = it ? findSesuPrice(it.name, it.sku) : null;
       return sum + (pr ? pr.price * e.qty : 0);
     }, 0);
   }
 
-  function render(rows, searchVal){
+  window.pkgRender = function(searchVal){
+    const rows = window.pkgModalRows;
     const matchedItems = searchVal
       ? items.filter(i=>i.name.toLowerCase().includes(searchVal.toLowerCase())||i.sku.toLowerCase().includes(searchVal.toLowerCase()))
-      : items;
+      : [];
 
     const rowsHtml = rows.map((e,idx)=>{
       const it = items.find(i=>i.id===e.id);
@@ -2652,65 +2656,69 @@ function openPackageModal(shipId){
       return `<div style="display:grid;grid-template-columns:1fr 70px 80px 24px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--border-light)">
         <div style="font-size:13px;font-weight:500">${esc(it?it.name:e.id)}</div>
         <input type="number" min="1" value="${e.qty}" style="width:64px;text-align:center;border:1px solid var(--border-light);border-radius:4px;padding:3px 6px;font-size:13px"
-          onchange="pkgModalRows[${idx}].qty=Math.max(1,parseInt(this.value)||1);document.getElementById('pkg-total').textContent=pkgModalRows.reduce((s,e)=>{const it=items.find(i=>i.id===e.id);const pr=it?findSesuPrice(it.name,it.sku):null;return s+(pr?pr.price*e.qty:0);},0).toLocaleString('da-DK')+' kr.'">
+          onchange="window.pkgModalRows[${idx}].qty=Math.max(1,parseInt(this.value)||1);document.getElementById('pkg-total').textContent=window.pkgModalRows.reduce((s,e)=>{const it=items.find(i=>i.id===e.id);const pr=it?findSesuPrice(it.name,it.sku):null;return s+(pr?pr.price*e.qty:0);},0).toLocaleString('da-DK')+' kr.'">
         <div style="font-size:12px;color:var(--blue);font-family:'IBM Plex Mono',monospace">${lineVal}</div>
-        <button onclick="pkgModalRows.splice(${idx},1);openPackageModal(${shipId})" style="border:none;background:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1">×</button>
+        <button onclick="window.pkgModalRows.splice(${idx},1);window.pkgRender('')" style="border:none;background:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1">×</button>
       </div>`;
     }).join('');
 
-    const searchResults = searchVal && matchedItems.length
-      ? matchedItems.slice(0,8).map(i=>{
-          const already = rows.some(e=>e.id===i.id);
-          return `<div onclick="${already?'':`pkgModalRows.push({id:'${i.id}',qty:1});openPackageModal(${shipId})`}" style="padding:6px 10px;cursor:${already?'default':'pointer'};border-bottom:1px solid var(--border-light);font-size:13px;opacity:${already?'.4':'1'}">${esc(i.name)}</div>`;
-        }).join('')
-      : '';
+    const searchResults = matchedItems.slice(0,8).map(i=>{
+      const already = rows.some(e=>e.id===i.id);
+      return `<div onclick="${already?'':
+        `window.pkgModalRows.push({id:'${i.id}',qty:1});document.getElementById('pkg-search').value='';window.pkgRender('')`
+      }" style="padding:6px 10px;cursor:${already?'default':'pointer'};border-bottom:1px solid var(--border-light);font-size:13px;opacity:${already?'.4':'1'}">${esc(i.name)}</div>`;
+    }).join('');
 
-    const total = calcTotal(rows);
+    const total = pkgCalcTotal();
     const skipChecked = window.pkgSkipDeduction ? 'checked' : '';
 
-    document.getElementById('modal-box').innerHTML=`
-      <div class="modal-head">
-        <div class="modal-title">📦 Pakkeindhold — ${esc(String(shipLabel))}</div>
-        <button class="modal-close" onclick="closeModal()">✕</button>
-      </div>
-      <div class="modal-body" style="max-height:70vh;overflow-y:auto">
-        ${rows.length ? rowsHtml : '<div style="color:var(--ink-3);font-size:13px;padding:8px 0">Ingen varer tilføjet endnu</div>'}
-        <div style="margin-top:14px">
-          <div style="font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Tilføj vare</div>
-          <input id="pkg-search" type="text" placeholder="Søg vare…" style="width:100%;border:1px solid var(--border-light);border-radius:6px;padding:7px 10px;font-size:13px;box-sizing:border-box"
-            value="${esc(searchVal||'')}">
-          ${searchResults ? `<div style="border:1px solid var(--border-light);border-top:none;border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;background:var(--bg)">${searchResults}</div>` : ''}
-        </div>
-        <div style="margin-top:16px;padding-top:12px;border-top:2px solid var(--border)">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <span style="font-size:13px;color:var(--ink-2)">Samlet pakkeværdi</span>
-            <span id="pkg-total" style="font-size:16px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--blue)">${total.toLocaleString('da-DK')} kr.</span>
-          </div>
-          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3);cursor:pointer">
-            <input type="checkbox" id="pkg-skip" ${skipChecked} onchange="window.pkgSkipDeduction=this.checked;document.getElementById('pkg-deduct-note').style.display=this.checked?'none':'block'">
-            Lager allerede fratrukket manuelt — spring lageraftræk over
-          </label>
-          <div id="pkg-deduct-note" style="display:${skipChecked?'none':'block'};margin-top:6px;font-size:11px;color:var(--ink-3);padding:6px 8px;background:var(--blue-dim);border-radius:4px">
-            Lagerantal fratrækkes automatisk ved gem
-          </div>
-        </div>
-      </div>
-      <div class="modal-foot">
-        <button class="btn" onclick="closeModal()">Annuller</button>
-        <button class="btn btn-primary" onclick="savePackageContentsModal(${shipId})">Gem</button>
-      </div>`;
-    openModal();
-    const si = document.getElementById('pkg-search');
-    if(si){
-      si.focus();
-      if(searchVal) si.setSelectionRange(searchVal.length,searchVal.length);
-      si.oninput = ()=>render(window.pkgModalRows, si.value);
-    }
-  }
+    const itemsArea = document.getElementById('pkg-items');
+    const totalEl   = document.getElementById('pkg-total');
+    const dropEl    = document.getElementById('pkg-drop');
+    const skipEl    = document.getElementById('pkg-skip');
+    const noteEl    = document.getElementById('pkg-deduct-note');
 
-  window.pkgModalRows = contents;
-  window.pkgSkipDeduction = defaultSkip;
-  render(contents, '');
+    if(itemsArea) itemsArea.innerHTML = rows.length ? rowsHtml : '<div style="color:var(--ink-3);font-size:13px;padding:8px 0">Ingen varer tilføjet endnu</div>';
+    if(totalEl) totalEl.textContent = total.toLocaleString('da-DK') + ' kr.';
+    if(dropEl) dropEl.innerHTML = searchResults ? `<div style="border:1px solid var(--border-light);border-top:none;border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;background:var(--bg)">${searchResults}</div>` : '';
+    if(skipEl) skipEl.checked = window.pkgSkipDeduction||false;
+    if(noteEl) noteEl.style.display = (window.pkgSkipDeduction) ? 'none' : 'block';
+  };
+
+  const skipChecked = window.pkgSkipDeduction ? 'checked' : '';
+  document.getElementById('modal-box').innerHTML=`
+    <div class="modal-head">
+      <div class="modal-title">📦 Pakkeindhold — ${esc(String(shipLabel))}</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <div id="pkg-items"></div>
+      <div style="margin-top:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Tilføj vare</div>
+        <input id="pkg-search" type="text" placeholder="Søg vare…" style="width:100%;border:1px solid var(--border-light);border-radius:6px;padding:7px 10px;font-size:13px;box-sizing:border-box" oninput="window.pkgRender(this.value)">
+        <div id="pkg-drop"></div>
+      </div>
+      <div style="margin-top:16px;padding-top:12px;border-top:2px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span style="font-size:13px;color:var(--ink-2)">Samlet pakkeværdi</span>
+          <span id="pkg-total" style="font-size:16px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--blue)">0 kr.</span>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3);cursor:pointer">
+          <input type="checkbox" id="pkg-skip" ${skipChecked} onchange="window.pkgSkipDeduction=this.checked;document.getElementById('pkg-deduct-note').style.display=this.checked?'none':'block'">
+          Lager allerede fratrukket manuelt — spring lageraftræk over
+        </label>
+        <div id="pkg-deduct-note" style="display:${skipChecked?'none':'block'};margin-top:6px;font-size:11px;color:var(--ink-3);padding:6px 8px;background:var(--blue-dim);border-radius:4px">
+          Lagerantal fratrækkes automatisk ved gem
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Annuller</button>
+      <button class="btn btn-primary" onclick="savePackageContentsModal(${shipId})">Gem</button>
+    </div>`;
+  openModal();
+  window.pkgRender('');
+  document.getElementById('pkg-search')?.focus();
 }
 
 async function savePackageContentsModal(shipId){
