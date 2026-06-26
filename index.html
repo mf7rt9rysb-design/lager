@@ -1827,6 +1827,8 @@ async function delRoom(id){
 }
 
 function showTab(t){
+  const VALID = new Set(['oversigt','varer','rum','forsendelser','priser']);
+  if(!VALID.has(t)) t = 'oversigt';
   ['oversigt','varer','rum','forsendelser','priser'].forEach(n=>{
     const el = document.getElementById('tab-'+n);
     if(el) el.style.display = n===t ? 'block' : 'none';
@@ -1838,13 +1840,19 @@ function showTab(t){
   const mnavAI = document.getElementById('mnav-ai');
   if(mnavAI) mnavAI.classList.remove('active');
   document.getElementById('page-title').textContent = TITLES[t] || t;
+  // Persist active tab in URL hash and localStorage
+  history.replaceState(null,'','#'+t);
+  localStorage.setItem('activeTab', t);
+  window.scrollTo(0,0);
+  resetInactivityTimer();
   const priceReady = loadSesuPrices();
   if(t === 'forsendelser' && !shipLoaded) priceReady.then(()=>{ if(!shipLoaded) loadShipments(); });
   if(t === 'priser' && !prisLoaded) loadPriser();
 }
 
-function openModal(){ document.getElementById('mb').classList.add('open'); }
+function openModal(){ document.getElementById('mb').classList.add('open'); resetInactivityTimer(); }
 function closeModal(){ document.getElementById('mb').classList.remove('open'); }
+
 
 let tT;
 function toast(m, duration=3500){
@@ -2068,7 +2076,7 @@ function renderShipments(ships){
       }</td>
       <td style="font-size:12px;color:var(--ink-3)">${esc(s.reference||'—')}</td>
       <td style="${{delivered:'background:#E2F0E2;',transit:'background:#FFF0D4;',returned:'background:#FCEBEB;'}[stateClass]||''}border-radius:6px;">
-        <div style="font-size:11px;font-family:'IBM Plex Mono',monospace;color:${trackColor};font-weight:${stateClass==='created'?'400':'600'}">${esc(tracking)}</div>
+        <div style="font-size:11px;font-family:'IBM Plex Mono',monospace;color:${trackColor};font-weight:${stateClass==='created'?'400':'600'};cursor:pointer" title="Klik for at kopiere" onclick="navigator.clipboard.writeText('${esc(tracking)}').then(()=>toast('Kopieret: ${esc(tracking)}'))">${esc(tracking)}</div>
         ${trackUrl ? `<a href="${trackUrl}" target="_blank" rel="noopener" class="tracking-link" style="font-size:11px">↗ Spor pakke</a>` : ''}
       </td>
       <td style="font-size:12px;color:var(--ink-3)">${esc(date)}</td>
@@ -2608,13 +2616,40 @@ function toggleLoginVis() {
 localStorage.removeItem('lager_claude_key');
 
 // Auto-unlock if already authenticated this session
+// ── AUTO-LOGOUT ved inaktivitet (8 timer) ──
+const INACTIVITY_MS = 8 * 60 * 60 * 1000;
+let _inactivityTimer = null;
+function resetInactivityTimer(){
+  clearTimeout(_inactivityTimer);
+  _inactivityTimer = setTimeout(()=>{
+    sessionStorage.removeItem('lager_auth');
+    sessionStorage.removeItem('lager_token');
+    toast('Session udløbet — log ind igen', 6000);
+    setTimeout(()=>location.reload(), 3000);
+  }, INACTIVITY_MS);
+}
+['click','keydown','touchstart','scroll'].forEach(ev=>
+  document.addEventListener(ev, resetInactivityTimer, { passive:true })
+);
+
 if (sessionStorage.getItem('lager_auth') === '1') {
   const screen = document.getElementById('login-screen');
   if (screen) screen.style.display = 'none';
+  resetInactivityTimer();
+  // Gendan aktiv fane fra URL-hash eller localStorage
+  window.addEventListener('DOMContentLoaded', () => {
+    const VALID = new Set(['oversigt','varer','rum','forsendelser','priser']);
+    const fromHash = location.hash.replace('#','');
+    const saved = VALID.has(fromHash) ? fromHash : (localStorage.getItem('activeTab') || 'oversigt');
+    if(saved !== 'oversigt') showTab(saved);
+  });
 } else {
   window.addEventListener('DOMContentLoaded', () => {
     const inp = document.getElementById('login-input');
-    if (inp) inp.focus();
+    if (inp) {
+      inp.focus();
+      inp.addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+    }
   });
 }
 
@@ -2638,7 +2673,11 @@ function toggleDark(){
 
 // ── KEYBOARD SHORTCUTS ──
 document.addEventListener('keydown', e => {
-  if(e.key==='Escape'){ closeModal(); closeAI(); return; }
+  if(e.key==='Escape'){
+    closeModal(); closeAI();
+    ['pkg-modal','qr-modal'].forEach(id=>{ const m=document.getElementById(id); if(m&&m.style.display!=='none') m.style.display='none'; });
+    return;
+  }
   if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT') return;
   if(e.key==='/' || e.key==='s'){ e.preventDefault(); showTab('varer'); setTimeout(()=>document.getElementById('search')?.focus(),100); }
   if(e.key==='n' || e.key==='N'){ openItemModal(null,null); }
