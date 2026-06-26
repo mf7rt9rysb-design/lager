@@ -1449,7 +1449,8 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
                 <th style="width:7%">Antal</th>
                 <th style="width:7%">Min.</th>
                 <th style="width:10%" class="hide-sm">Pris (sesu.dk)</th>
-                <th style="width:11%" class="hide-sm">Lagerværdi</th>
+                <th style="width:7%" class="hide-sm">Margin</th>
+                <th style="width:9%" class="hide-sm">Lagerværdi</th>
                 <th style="width:12%"></th>
               </tr></thead>
               <tbody id="items-tbody"></tbody>
@@ -2050,6 +2051,29 @@ function renderOversigtsAdvarsler(){
     }
   }
 
+  // Bestil snart: varer der skal bestilles inden 7 dage (baseret på dækningsdage - leveringstid)
+  if(histLoaded){
+    const bestilSnart=items.filter(i=>{
+      const lead=parseInt(i.leadDays||0); if(!lead) return false;
+      const dd=daekningsdage(i.id); if(dd===null||dd===Infinity) return false;
+      const bestilOm=Math.round(dd-lead);
+      return bestilOm<=7 && bestilOm>0 && parseInt(i.qty||0)>0;
+    }).map(i=>({...i,bestilOm:Math.round(daekningsdage(i.id)-parseInt(i.leadDays||0))}))
+      .sort((a,b)=>a.bestilOm-b.bestilOm);
+    if(bestilSnart.length){
+      parts.push(`<div style="background:var(--amber-dim);border:1px solid rgba(160,122,42,.15);border-radius:var(--radius);padding:14px 18px">
+        <div style="font-size:12px;font-weight:700;color:var(--amber);letter-spacing:.04em;text-transform:uppercase;margin-bottom:10px">🕐 ${bestilSnart.length} vare${bestilSnart.length===1?'':'r'} skal bestilles inden 7 dage</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${bestilSnart.slice(0,5).map(i=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
+            <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openItemModal('${i.id}',null)">${esc(i.name)}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--amber);font-size:12px">bestil om ${i.bestilOm}d</span>
+          </div>`).join('')}
+          ${bestilSnart.length>5?`<div style="font-size:11px;color:var(--amber);opacity:.7">+${bestilSnart.length-5} mere</div>`:''}
+        </div>
+      </div>`);
+    }
+  }
+
   el.innerHTML=parts.length?`<div style="display:flex;flex-direction:column;gap:12px">${parts.join('')}</div>`:'';
 }
 
@@ -2121,6 +2145,20 @@ function renderOverview(){
       <div class="stat-detail">${low.length?'kræver genbestilling':'alt over minimum'}</div>
     </div>
     ${monthlyHtml}
+    ${(()=>{
+      if(!sesuPricesLoaded) return '';
+      const marginItems=items.filter(i=>i.costPrice&&parseFloat(i.costPrice)>0).map(i=>{
+        const m=findSesuPrice(i.name,i.sku); if(!m) return null;
+        return {pct:Math.round((m.price-parseFloat(i.costPrice))/m.price*100)};
+      }).filter(Boolean);
+      if(!marginItems.length) return '';
+      const avg=Math.round(marginItems.reduce((s,i)=>s+i.pct,0)/marginItems.length);
+      return `<div class="stat-card accent" style="cursor:pointer" onclick="showTab('rapporter')" title="Se avanceanalyse i Rapporter">
+        <div class="stat-label">Gns. avance</div>
+        <div class="stat-value" style="font-size:26px">${avg}%</div>
+        <div class="stat-detail">${marginItems.length} varer med kostpris</div>
+      </div>`;
+    })()}
     <div class="stat-card" id="lv-card" style="cursor:pointer;user-select:none" onclick="toggleLagervaerdi()" title="Klik for at låse op">
       <div class="stat-label">Samlet lagerværdi <span id="lv-lock" style="font-size:11px">🔒</span></div>
       <div class="stat-value" id="lv-value" style="font-size:20px;letter-spacing:.08em">••••••</div>
@@ -2270,8 +2308,13 @@ function renderItems(){
 
     const imgUrl = match?.image || '';
     const dd = daekningsdage(i.id);
-    const ddHtml = dd===null ? '' : dd===0 ? '<div class="td-sub" style="color:var(--red)">udsolgt</div>' :
-      `<div class="td-sub" style="color:${dd<7?'var(--red)':dd<30?'var(--amber)':'var(--green)'}">~${Math.round(dd)}d</div>`;
+    const lead = parseInt(i.leadDays||0);
+    const bestilOm = dd===null ? null : lead>0 ? Math.round(dd - lead) : null;
+    const ddHtml = dd===null ? '' : dd===0 ? '<div class="td-sub" style="color:var(--red);font-weight:600">Udsolgt</div>' :
+      bestilOm!==null
+        ? (bestilOm<=0 ? '<div class="td-sub" style="color:var(--red);font-weight:700">Bestil NU</div>'
+          : `<div class="td-sub" style="color:${bestilOm<=7?'var(--red)':bestilOm<=30?'var(--amber)':'var(--green)'}">bestil om ${bestilOm}d</div>`)
+        : `<div class="td-sub" style="color:${dd<7?'var(--red)':dd<30?'var(--amber)':'var(--green)'}">~${Math.round(dd)}d</div>`;
     return `<tr>
       <td><input type="checkbox" class="row-check" ${checked} onchange="toggleCheck('${i.id}',this)"></td>
       <td style="display:flex;align-items:center;gap:10px">
@@ -2295,6 +2338,7 @@ function renderItems(){
       </td>
       <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-3)">${i.minQty}</td>
       ${priceCell}
+      ${(()=>{ const cost=parseFloat(i.costPrice||0); const sell=unitPrice; if(!cost||!sell) return '<td class="hide-sm" style="color:var(--ink-3);font-size:11px">—</td>'; const pct=Math.round((sell-cost)/sell*100); return `<td class="hide-sm"><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;color:${pct>30?'var(--green)':pct>15?'var(--amber)':'var(--red)'}">${pct}%</span></td>`; })()}
       ${valueCell}
       <td>
         <div class="td-actions">
@@ -4674,7 +4718,7 @@ function handleScan(raw, inOtaelling){
   // 3) Delvis SKU-match
   if(!found) found = items.find(i=>i.sku && raw.includes(i.sku.trim()));
 
-  if(!found){ toast('Ingen vare fundet for: '+raw.slice(0,30)); return; }
+  if(!found){ lookupEAN(raw); return; }
 
   if(inOtaelling){
     showTab('optaelling');
@@ -6068,6 +6112,14 @@ if (_hasToken) {
 setInterval(()=>{ if(sessionStorage.getItem('lager_token')) loadBalance(); }, 60000);
 setInterval(()=>{ if(sessionStorage.getItem('lager_token')) loadMonthlyStats(); }, 300000);
 setInterval(()=>{ if(sessionStorage.getItem('lager_token')) loadMonthlyHistory(); }, 600000);
+// Auto-opdater forsendelser hvert 5. minut når fanen er aktiv
+setInterval(()=>{
+  if(!sessionStorage.getItem('lager_token')) return;
+  if(document.hidden) return;
+  const el=document.getElementById('tab-forsendelser');
+  if(!el||el.style.display==='none') return;
+  loadShipments();
+}, 300000);
 
 </script>
 
@@ -6417,6 +6469,40 @@ function renderAIMessages(){
 function scrollAI(){
   const el = document.getElementById('ai-messages');
   el.scrollTop = el.scrollHeight;
+}
+
+// ── EAN BARCODE LOOKUP ──
+async function lookupEAN(barcode){
+  toast('Slår stregkode op…');
+  try {
+    const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(barcode)}`);
+    const d = await r.json();
+    const item = d.items?.[0];
+    if(item){
+      const name  = item.title || '';
+      const brand = item.brand || '';
+      const img   = item.images?.[0] || '';
+      const fullName = brand && !name.toLowerCase().includes(brand.toLowerCase()) ? `${brand} ${name}` : name;
+      // Pre-fyld "Tilføj vare" modal
+      showTab('varer');
+      openItemModal(null, null);
+      setTimeout(()=>{
+        const fn=document.getElementById('f-name'); if(fn) fn.value=fullName;
+        const fs=document.getElementById('f-sku');  if(fs) fs.value=barcode;
+        const fi=document.getElementById('f-imageurl'); if(fi&&img){ fi.value=img; const p=document.getElementById('item-img-prev'); if(p){p.src=img;p.style.display='';} }
+        toast(`EAN fundet: ${fullName}`);
+      }, 300);
+    } else {
+      // Ikke i database — åbn blank modal med stregkode som SKU
+      showTab('varer');
+      openItemModal(null, null);
+      setTimeout(()=>{ const fs=document.getElementById('f-sku'); if(fs) fs.value=barcode; toast('Ukendt stregkode — udfyld varen manuelt'); }, 300);
+    }
+  } catch(e){
+    showTab('varer');
+    openItemModal(null, null);
+    setTimeout(()=>{ const fs=document.getElementById('f-sku'); if(fs) fs.value=barcode; toast('EAN-opslag fejlede — udfyld manuelt'); }, 300);
+  }
 }
 
 // ── FORTRYD (UNDO) ──
