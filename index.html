@@ -2302,7 +2302,7 @@ function openItemModal(id, preRoom){
             <button class="qty-btn" onclick="adjQ(1)">+</button>
           </div>
         </div>
-        <div class="fg"><label>Min. beholdning</label><input id="f-minq" type="number" value="${minQ}" min="0"></div>
+        <div class="fg"><label style="display:flex;justify-content:space-between;align-items:center">Min. beholdning <button type="button" onclick="suggestMinQty('${id||''}')" style="font-size:10px;font-weight:600;color:var(--blue);background:none;border:1px solid var(--blue);border-radius:4px;padding:1px 6px;cursor:pointer;line-height:1.5" title="Beregn ud fra forbrug × leveringstid">✦ Auto</button></label><input id="f-minq" type="number" value="${minQ}" min="0"></div>
         <div class="fg"><label>Leveringstid (dage)</label><input id="f-lead" type="number" value="${lead||''}" min="0" placeholder="—" title="Dage fra bestilling til hylde"></div>
       </div>
       <div class="form-row">
@@ -2311,15 +2311,91 @@ function openItemModal(id, preRoom){
       </div>
       ${allLeverandoerer.length ? `<div class="fg"><label>Leverandør</label><select id="f-supplier"><option value="">— ingen —</option>${allLeverandoerer.map(l=>`<option value="${esc(l.id)}"${l.id===supplier?' selected':''}>${esc(l.name)}</option>`).join('')}</select></div>` : ''}
       <div class="fg"><label>Note</label><textarea id="f-note" placeholder="Evt. kommentar…">${esc(note)}</textarea></div>
+      ${id ? '<div id="item-prognose"></div>' : ''}
     </div>
     <div class="modal-foot">
       <button class="btn" onclick="closeModal()">Annuller</button>
       <button class="btn btn-primary" onclick="saveItem('${id||''}',${!!id})">${id?'Gem ændringer':'Tilføj vare'}</button>
     </div>`;
   openModal();
+  if(id) renderItemPrognose(id);
 }
 
 function adjQ(d){ const i=document.getElementById('f-qty'), v=Math.max(0,parseInt(i.value||0)+d); i.value=v; document.getElementById('q-d').textContent=v; }
+
+function suggestMinQty(itemId){
+  const leadEl=document.getElementById('f-lead');
+  const leadDays=parseInt(leadEl?.value||0);
+  if(!leadDays){ toast('Angiv leveringstid (dage) først'); return; }
+  if(!histLoaded||!histEntries.length){ toast('Hent historik under Historik-fanen først'); return; }
+  if(!itemId){ toast('Gem varen først, og genåbn den'); return; }
+  const cut=new Date(Date.now()-30*86400000).toISOString();
+  const consumed=histEntries
+    .filter(e=>e.item_id===itemId&&e.ts>=cut)
+    .reduce((s,e)=>{const d=parseInt(e.to_qty||0)-parseInt(e.from_qty||0);return s+(d<0?-d:0);},0);
+  if(consumed===0){ toast('Ingen bevægelser de seneste 30 dage'); return; }
+  const dailyRate=consumed/30;
+  const suggested=Math.ceil(dailyRate*leadDays*1.2);
+  document.getElementById('f-minq').value=suggested;
+  toast(`Forslag: ${suggested} stk.  (${Math.round(dailyRate*10)/10}/dag × ${leadDays}d + 20% buffer)`);
+}
+
+function renderItemPrognose(itemId){
+  const el=document.getElementById('item-prognose'); if(!el) return;
+  if(!histLoaded||!histEntries.length) return;
+  const it=items.find(i=>i.id===itemId); if(!it) return;
+  const cut=new Date(Date.now()-30*86400000).toISOString();
+  const consumed=histEntries
+    .filter(e=>e.item_id===itemId&&e.ts>=cut)
+    .reduce((s,e)=>{const d=parseInt(e.to_qty||0)-parseInt(e.from_qty||0);return s+(d<0?-d:0);},0);
+  if(consumed===0) return;
+  const dailyRate=consumed/30;
+  const currentQty=parseInt(it.qty||0);
+  const minQty=parseInt(it.minQty||0);
+  const days=60;
+  const pts=Array.from({length:days+1},(_,d)=>Math.max(0,currentQty-dailyRate*d));
+  const maxQ=currentQty; if(maxQ===0) return;
+  const W=400,H=70;
+  const xs=d=>(d/days*W).toFixed(1);
+  const ys=q=>(H-Math.min(q/maxQ*H,H)).toFixed(1);
+  const polyline=pts.map((q,d)=>`${xs(d)},${ys(q)}`).join(' ');
+  const hitMin=pts.findIndex(q=>q<=minQty&&minQty>0);
+  const hitZero=pts.findIndex(q=>q<=0);
+  const statusTxt=hitZero>0&&hitZero<=days
+    ?`<span style="color:var(--red);font-weight:600">Udsolgt dag ${hitZero}</span>`
+    :hitMin>0&&hitMin<=days
+    ?`<span style="color:var(--amber);font-weight:600">Under min. dag ${hitMin}</span>`
+    :'<span style="color:var(--green)">OK de næste 60 dage</span>';
+  el.innerHTML=`<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border-light)">
+    <div style="font-size:11px;font-weight:600;color:var(--ink-3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">Lagerprognose — 60 dage</div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:55px;overflow:visible">
+      ${minQty>0&&minQty<maxQ?`<line x1="0" y1="${ys(minQty)}" x2="${W}" y2="${ys(minQty)}" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="5,4" opacity=".7"/><text x="4" y="${(parseFloat(ys(minQty))-3).toFixed(1)}" font-size="9" fill="var(--amber)" opacity=".8">min</text>`:''}
+      <polyline points="${polyline}" fill="none" stroke="var(--blue)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="0" cy="${ys(currentQty)}" r="3.5" fill="var(--blue)"/>
+      ${hitMin>0&&hitMin<=days?`<circle cx="${xs(hitMin)}" cy="${ys(minQty)}" r="3.5" fill="var(--amber)"/>`:''}
+      ${hitZero>0&&hitZero<=days?`<circle cx="${xs(hitZero)}" cy="${H}" r="3.5" fill="var(--red)"/>`:''}
+    </svg>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--ink-3);font-family:'IBM Plex Mono',monospace;margin-top:3px">
+      <span>${currentQty} stk. nu · ${Math.round(dailyRate*10)/10}/dag</span>
+      ${statusTxt}
+      <span>dag 60</span>
+    </div>
+  </div>`;
+}
+
+async function sendPOEmailFn(poId){
+  const po=allPO.find(p=>p.id===poId); if(!po) return;
+  const lev=allLeverandoerer.find(l=>l.id===po.supplier_id);
+  if(!lev?.email){ toast('Ingen e-mail på leverandøren — tilføj den under Leverandører'); return; }
+  if(!confirm(`Send ordremail til ${lev.email}?`)) return;
+  try{
+    const res=await jsonp({action:'sendPOEmail',po_id:po.id,supplier_email:lev.email,
+      supplier_name:po.supplier_name,expected_date:po.expected_date||'',
+      notes:po.notes||'',items_json:JSON.stringify(po.items||[])});
+    if(res.error) throw new Error(res.error);
+    toast('Mail sendt til '+lev.email);
+  }catch(e){ toast('Fejl: '+e.message); }
+}
 
 async function saveItem(id, edit){
   const name = document.getElementById('f-name').value.trim();
@@ -4755,6 +4831,7 @@ function openPOModal(id){
     </div>
     <div class="modal-foot">
       ${id&&po.status!=='lukket'?`<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="if(confirm('Annuller ordren?'))savePOStatus('${id}','annulleret')">Annuller ordre</button>`:''}
+      ${(()=>{if(!id) return '';const lev=allLeverandoerer.find(l=>l.id===po.supplier_id);return lev?.email?`<button class="btn btn-ghost btn-sm" onclick="sendPOEmailFn('${id}')">📧 Send til leverandør</button>`:''})()}
       <button class="btn" onclick="closeModal()">Luk</button>
       <button class="btn btn-primary" onclick="savePOFn('${id||''}',draftItems)">Gem ordre</button>
     </div>`;
