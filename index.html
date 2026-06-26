@@ -12,7 +12,7 @@
   style-src 'self' 'unsafe-inline' fonts.googleapis.com fonts.gstatic.com;
   img-src 'self' data: blob: https:;
   font-src 'self' fonts.gstatic.com;
-  connect-src 'self' https://script.google.com https://api.upcitemdb.com https://api.qrserver.com https://api.anthropic.com;
+  connect-src 'self' https://script.google.com https://script.googleusercontent.com https://api.upcitemdb.com https://api.qrserver.com https://api.anthropic.com;
   frame-ancestors 'none';
   base-uri 'self';
   form-action 'self';
@@ -2024,19 +2024,23 @@ function showErr(m){
   if(m) b.textContent = m;
 }
 
-function jsonp(params){
+async function jsonp(params, timeoutMs=12000){
   const token = sessionStorage.getItem('lager_token') || '';
-  return new Promise((resolve, reject) => {
-    const cb = 'cb_'+uid();
-    const url = API+'?'+new URLSearchParams({...params, token, callback:cb});
-    const s = document.createElement('script');
-    const timer = setTimeout(()=>{ cleanup(); reject(new Error('Timeout — tjek Apps Script URL og deployment')); }, 12000);
-    window[cb] = (data) => { cleanup(); resolve(data); };
-    function cleanup(){ clearTimeout(timer); delete window[cb]; if(s.parentNode) s.parentNode.removeChild(s); }
-    s.onerror = () => { cleanup(); reject(new Error('Kunne ikke nå server — tjek deployment er sat til "Alle"')); };
-    s.src = url;
-    document.head.appendChild(s);
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(API, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({...params, token}),
+      signal:ctrl.signal
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return await r.json();
+  } catch(e) {
+    if(e.name==='AbortError') throw new Error('Timeout — tjek Apps Script URL og deployment');
+    throw new Error('Kunne ikke nå server — tjek deployment er sat til "Alle": '+e.message);
+  } finally { clearTimeout(timer); }
 }
 
 async function loadAll(quiet){
@@ -2195,21 +2199,7 @@ async function assignSesuSku(itemId, sku) {
   renderItems();
 }
 
-function jsonpShipSlow(params){
-  const token = sessionStorage.getItem('lager_token') || '';
-  const withToken = {...params, token};
-  return new Promise((resolve, reject) => {
-    const cb = 'shipcb_'+uid();
-    const url = SHIP_API+'?'+new URLSearchParams({...withToken, callback:cb});
-    const s = document.createElement('script');
-    const timer = setTimeout(()=>{ cleanup(); reject(new Error('Timeout')); }, 35000);
-    window[cb] = (data) => { cleanup(); resolve(data); };
-    function cleanup(){ clearTimeout(timer); delete window[cb]; if(s.parentNode) s.parentNode.removeChild(s); }
-    s.onerror = () => { cleanup(); reject(new Error('Script fejl')); };
-    s.src = url;
-    document.head.appendChild(s);
-  });
-}
+function jsonpShipSlow(params){ return jsonpShip(params, 35000); }
 
 function catBadge(cat){ return `<span class="badge ${getBadgeClass(cat)}">${esc(cat)}</span>`; }
 function esc(s){ const d=document.createElement('div'); d.textContent=String(s??''); return d.innerHTML; }
@@ -3030,20 +3020,24 @@ function shipSearchDebounce(){
   shipSearchTimer = setTimeout(()=>{ shipPage=1; loadShipments(); }, 400);
 }
 
-function jsonpShip(params){
+async function jsonpShip(params, timeoutMs=15000){
   const token = sessionStorage.getItem('lager_token') || '';
-  const withToken = params.action === 'verifyLogin' ? params : {...params, token};
-  return new Promise((resolve, reject) => {
-    const cb = 'shipcb_'+uid();
-    const url = SHIP_API+'?'+new URLSearchParams({...withToken, callback:cb});
-    const s = document.createElement('script');
-    const timer = setTimeout(()=>{ cleanup(); reject(new Error('Timeout')); }, 15000);
-    window[cb] = (data) => { cleanup(); resolve(data); };
-    function cleanup(){ clearTimeout(timer); delete window[cb]; if(s.parentNode) s.parentNode.removeChild(s); }
-    s.onerror = () => { cleanup(); reject(new Error('Script fejl')); };
-    s.src = url;
-    document.head.appendChild(s);
-  });
+  const body = params.action === 'verifyLogin' ? params : {...params, token};
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(SHIP_API, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify(body),
+      signal:ctrl.signal
+    });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return await r.json();
+  } catch(e) {
+    if(e.name==='AbortError') throw new Error('Timeout');
+    throw new Error('Script fejl: '+e.message);
+  } finally { clearTimeout(timer); }
 }
 
 async function loadShipments(){
