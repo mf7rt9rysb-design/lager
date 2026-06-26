@@ -3720,6 +3720,47 @@ async function renderRapporter(force){
   const movedIds90=new Set(histEntries.filter(e=>e.ts>=cutoff90).map(e=>e.item_id));
   const slowMovers=items.filter(i=>parseInt(i.qty||0)>0&&!movedIds90.has(i.id));
 
+  // Gem abcList på window så sorteringsfunktionen kan tilgå den
+  window._rapAbcList = abcList;
+  if(!window._rapSort) window._rapSort = {col:'val', dir:-1};
+
+  const sortedAbc = ()=>{
+    const {col, dir} = window._rapSort;
+    return [...window._rapAbcList].sort((a,b)=>{
+      if(col==='name') return dir*a.name.localeCompare(b.name,'da');
+      if(col==='abc')  return dir*(a.abcClass.charCodeAt(0)-b.abcClass.charCodeAt(0));
+      if(col==='qty')  return dir*(parseInt(a.qty||0)-parseInt(b.qty||0));
+      if(col==='unit') return dir*((a.val&&parseInt(a.qty)>0?a.val/parseInt(a.qty):0)-(b.val&&parseInt(b.qty)>0?b.val/parseInt(b.qty):0));
+      return dir*(a.val-b.val); // 'val' default
+    });
+  };
+
+  const thStyle = col => {
+    const active = window._rapSort.col===col;
+    const arrow = active ? (window._rapSort.dir===1?' ↑':' ↓') : '';
+    return `style="cursor:pointer;user-select:none;${active?'color:var(--blue)':''}" onclick="window._rapSort={col:'${col}',dir:window._rapSort.col==='${col}'?-window._rapSort.dir:-1};renderRapAbcRows()"`;
+  };
+
+  const renderAbcRows = (list) => list.slice(0,30).map(i=>{
+    const badge=i.abcClass==='A'?'abc-badge-a':i.abcClass==='B'?'abc-badge-b':'';
+    return `<tr>
+      <td><div class="td-name">${esc(i.name)}</div>${catBadge(i.cat)}</td>
+      <td><span class="badge ${badge}" style="${!badge?'background:var(--surface-2);color:var(--ink-3)':''}">${i.abcClass}</span></td>
+      <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--blue)">${i.val>0?i.val.toLocaleString('da-DK')+' kr.':'—'}</td>
+      <td style="font-family:'IBM Plex Mono',monospace;font-weight:600">${esc(i.qty)}</td>
+      <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-3)">${i.val&&parseInt(i.qty)>0?(i.val/parseInt(i.qty)).toLocaleString('da-DK',{maximumFractionDigits:0})+' kr.':'—'}</td>
+    </tr>`;
+  }).join('');
+
+  window.renderRapAbcRows = ()=>{
+    const tbody=document.getElementById('rap-abc-tbody');
+    const info=document.getElementById('rap-abc-info');
+    if(!tbody) return;
+    const sorted=sortedAbc();
+    tbody.innerHTML=renderAbcRows(sorted);
+    if(info) info.textContent=sorted.length>30?`Viser top 30 af ${sorted.length} varer`:`${sorted.length} varer`;
+  };
+
   content.innerHTML=`
     <!-- ABC-analyse -->
     <div class="card" style="margin-bottom:20px">
@@ -3738,19 +3779,16 @@ async function renderRapporter(force){
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Vare</th><th style="width:8%">ABC</th><th style="width:14%">Lagerværdi</th><th style="width:8%">Antal</th><th style="width:11%">Enhedspris</th></tr></thead>
-          <tbody>${abcList.slice(0,20).map(i=>{
-            const badge=i.abcClass==='A'?'abc-badge-a':i.abcClass==='B'?'abc-badge-b':'';
-            return `<tr>
-              <td><div class="td-name">${esc(i.name)}</div>${catBadge(i.cat)}</td>
-              <td><span class="badge ${badge}" style="${!badge?'background:var(--surface-2);color:var(--ink-3)':''}">${i.abcClass}</span></td>
-              <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;color:var(--blue)">${i.val>0?i.val.toLocaleString('da-DK')+' kr.':'—'}</td>
-              <td style="font-family:'IBM Plex Mono',monospace">${esc(i.qty)}</td>
-              <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-3)">${i.val&&parseInt(i.qty)>0?(i.val/parseInt(i.qty)).toLocaleString('da-DK',{maximumFractionDigits:0})+' kr.':'—'}</td>
-            </tr>`;
-          }).join('')}</tbody>
+          <thead><tr>
+            <th ${thStyle('name')}>Vare</th>
+            <th style="width:8%" ${thStyle('abc')}>ABC</th>
+            <th style="width:14%" ${thStyle('val')}>Lagerværdi</th>
+            <th style="width:8%" ${thStyle('qty')}>Antal</th>
+            <th style="width:11%" ${thStyle('unit')}>Enhedspris</th>
+          </tr></thead>
+          <tbody id="rap-abc-tbody">${renderAbcRows(sortedAbc())}</tbody>
         </table>
-        ${abcList.length>20?`<div style="padding:8px 16px;font-size:11px;color:var(--ink-3)">Viser top 20 af ${abcList.length} varer</div>`:''}
+        <div id="rap-abc-info" style="padding:8px 16px;font-size:11px;color:var(--ink-3)">${abcList.length>30?`Viser top 30 af ${abcList.length} varer`:abcList.length+' varer'}</div>
       </div>
     </div>
 
