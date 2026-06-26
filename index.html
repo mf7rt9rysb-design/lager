@@ -1332,6 +1332,7 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
       <div id="tab-oversigt" class="view active">
         <div class="stats-grid" id="stats-grid"></div>
         <div class="stats-grid" id="pkg-stats-grid" style="margin-bottom:20px"></div>
+        <div id="ov-alerts" style="margin-bottom:20px"></div>
         <div class="card" style="margin-bottom:20px">
           <div class="card-header">
             <span class="card-title">Forsendelser — sidste 6 måneder</span>
@@ -1770,7 +1771,7 @@ async function loadAll(quiet){
   }
 }
 
-function renderAll(){ renderOverview(); renderItems(); renderRooms(); renderIndkob(); }
+function renderAll(){ renderOverview(); renderItems(); renderRooms(); renderIndkob(); renderOversigtsAdvarsler(); }
 
 let _sesuPricesPromise = null;
 async function loadSesuPrices() {
@@ -1895,6 +1896,64 @@ function jsonpShipSlow(params){
 function catBadge(cat){ return `<span class="badge ${getBadgeClass(cat)}">${esc(cat)}</span>`; }
 function esc(s){ const d=document.createElement('div'); d.textContent=String(s??''); return d.innerHTML; }
 
+function renderOversigtsAdvarsler(){
+  const el=document.getElementById('ov-alerts'); if(!el) return;
+  const parts=[];
+
+  // Kritisk beholdning: varer der løber tør inden 7 dage
+  if(histLoaded){
+    const kritiske=items.filter(i=>{
+      const dd=daekningsdage(i.id);
+      return dd!==null&&dd!==Infinity&&dd<7&&parseInt(i.qty||0)>0;
+    }).sort((a,b)=>(daekningsdage(a.id)||99)-(daekningsdage(b.id)||99));
+    if(kritiske.length){
+      parts.push(`<div style="background:var(--red-dim);border:1px solid rgba(184,32,32,.15);border-radius:var(--radius);padding:14px 18px">
+        <div style="font-size:12px;font-weight:700;color:var(--red);letter-spacing:.04em;text-transform:uppercase;margin-bottom:10px">⚠ ${kritiske.length} vare${kritiske.length===1?'':'r'} løber tør inden for 7 dage</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${kritiske.slice(0,5).map(i=>{
+            const dd=Math.round(daekningsdage(i.id));
+            return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
+              <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openItemModal('${i.id}',null)">${esc(i.name)}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--red);font-size:12px">${dd}d tilbage</span>
+            </div>`;
+          }).join('')}
+          ${kritiske.length>5?`<div style="font-size:11px;color:var(--red);opacity:.7">+${kritiske.length-5} mere — se Indkøbsliste</div>`:''}
+        </div>
+      </div>`);
+    }
+  }
+
+  // Åbne indkøbsordrer med levering denne uge eller overskredet
+  if(poLoaded&&allPO.length){
+    const today=new Date().toISOString().slice(0,10);
+    const inSevenDays=new Date(Date.now()+7*86400000).toISOString().slice(0,10);
+    const pending=allPO.filter(p=>(p.status==='åben'||p.status==='delvist')&&p.expected_date);
+    const overskredet=pending.filter(p=>p.expected_date<today);
+    const denneUge=pending.filter(p=>p.expected_date>=today&&p.expected_date<=inSevenDays);
+    if(overskredet.length||denneUge.length){
+      const rows=[
+        ...overskredet.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
+          <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="showTab('indkoebsordrer')">${esc(p.supplier_name)} <span style="font-size:10px;font-family:'IBM Plex Mono',monospace">#${p.id.slice(-6).toUpperCase()}</span></span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--red);font-size:12px">Forsinket</span>
+        </div>`),
+        ...denneUge.map(p=>{
+          let exp=''; try{ exp=new Date(p.expected_date).toLocaleDateString('da-DK',{day:'numeric',month:'short'}); }catch(x){}
+          return `<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px">
+            <span style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="showTab('indkoebsordrer')">${esc(p.supplier_name)} <span style="font-size:10px;font-family:'IBM Plex Mono',monospace">#${p.id.slice(-6).toUpperCase()}</span></span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--amber)">${exp}</span>
+          </div>`;
+        })
+      ];
+      parts.push(`<div style="background:var(--blue-dim);border:1px solid rgba(26,115,232,.15);border-radius:var(--radius);padding:14px 18px">
+        <div style="font-size:12px;font-weight:700;color:var(--blue);letter-spacing:.04em;text-transform:uppercase;margin-bottom:10px">📦 ${overskredet.length+denneUge.length} indkøbsordre${overskredet.length+denneUge.length===1?'':'r'} kræver opmærksomhed</div>
+        <div style="display:flex;flex-direction:column;gap:6px">${rows.join('')}</div>
+      </div>`);
+    }
+  }
+
+  el.innerHTML=parts.length?`<div style="display:flex;flex-direction:column;gap:12px">${parts.join('')}</div>`:'';
+}
+
 function renderOverview(){
   const tq = items.reduce((s,i)=>s+parseInt(i.qty||0),0);
   const low = items.filter(i=>parseInt(i.qty||0)<parseInt(i.minQty||0));
@@ -1958,7 +2017,7 @@ function renderOverview(){
     <div class="stat-card" id="lv-card" style="cursor:pointer;user-select:none" onclick="toggleLagervaerdi()" title="Klik for at låse op">
       <div class="stat-label">Samlet lagerværdi <span id="lv-lock" style="font-size:11px">🔒</span></div>
       <div class="stat-value" id="lv-value" style="font-size:20px;letter-spacing:.08em">••••••</div>
-      <div class="stat-detail" id="lv-detail">${sesuPricesLoaded ? totalLagervaerdi > 0 ? 'baseret på sesu.dk priser' : 'hent priser under Alle varer' : 'hent priser under Alle varer'}</div>
+      <div class="stat-detail" id="lv-detail">${totalLagervaerdiLabel}</div>
     </div>`;
 
   // ── Pakkeværdi solgt denne måned + projektion næste måned ──
@@ -2126,15 +2185,22 @@ function renderItems(){
 
   // Total lagerværdi footer
   // Gem total globalt og opdater oversigt-kortet hvis det er åbent
-  if(sesuPricesLoaded) {
+  // Kostpris-baseret lagerværdi (foretrækkes over sesu.dk-priser)
+  const kostVaerdiItems = items.filter(i=>i.costPrice&&parseFloat(i.costPrice)>0);
+  const kostVaerdi = kostVaerdiItems.reduce((s,i)=>s+parseFloat(i.costPrice)*parseInt(i.qty||0),0);
+  if(kostVaerdiItems.length>0){
+    totalLagervaerdi = Math.round(kostVaerdi);
+    totalLagervaerdiLabel = `indkøbspris · ${kostVaerdiItems.length} af ${items.length} varer`;
+  } else if(sesuPricesLoaded && totalValue>0){
     totalLagervaerdi = totalValue;
-    const lvCard = document.getElementById('lv-value');
-    const lvDetail = document.getElementById('lv-detail');
-    if(lvCard && lagervaerdiUnlocked){
-      lvCard.textContent = totalValue > 0 ? totalValue.toLocaleString('da-DK') + ' kr.' : '—';
-    }
-    if(lvDetail && totalValue > 0) lvDetail.textContent = 'baseret på sesu.dk priser';
+    totalLagervaerdiLabel = `sesu.dk priser · ${valuedCount} af ${fil.length} varer`;
   }
+  const lvCard = document.getElementById('lv-value');
+  const lvDetail = document.getElementById('lv-detail');
+  if(lvCard && lagervaerdiUnlocked){
+    lvCard.textContent = totalLagervaerdi > 0 ? totalLagervaerdi.toLocaleString('da-DK') + ' kr.' : '—';
+  }
+  if(lvDetail && totalLagervaerdi > 0) lvDetail.textContent = totalLagervaerdiLabel;
 
   const totalEl = document.getElementById('items-value-total');
   if(sesuPricesLoaded && valuedCount > 0){
@@ -2841,14 +2907,15 @@ async function submitShipment(){
 
 // ── LAGERVÆRDI ──
 let totalLagervaerdi = 0;
+let totalLagervaerdiLabel = 'hent priser under Alle varer';
 let lagervaerdiUnlocked = false;
 
 async function toggleLagervaerdi() {
   const valEl  = document.getElementById('lv-value');
   const lockEl = document.getElementById('lv-lock');
   const detEl  = document.getElementById('lv-detail');
-  if(!sesuPricesLoaded){
-    detEl.textContent = 'Hent priser under Alle varer først';
+  if(totalLagervaerdi===0){
+    detEl.textContent = 'Angiv kostpriser under varer, eller hent sesu.dk priser';
     return;
   }
   if(lagervaerdiUnlocked){
@@ -2892,9 +2959,9 @@ async function confirmLvPin() {
       if(valEl){
         valEl.textContent = totalLagervaerdi > 0
           ? totalLagervaerdi.toLocaleString('da-DK') + ' kr.'
-          : '— (hent priser)';
+          : '— (angiv kostpriser under varer)';
         lockEl.textContent = '🔓';
-        detEl.textContent = 'baseret på sesu.dk priser';
+        detEl.textContent = totalLagervaerdiLabel;
       }
     } else {
       err.textContent = 'Forkert kode';
@@ -3740,7 +3807,50 @@ async function renderRapporter(force){
         </table></div>${slowMovers.length>10?`<div style="padding:8px 16px;font-size:11px;color:var(--ink-3)">+${slowMovers.length-10} mere</div>`:''}`
         : '<div style="padding:20px;font-size:13px;color:var(--green)">✓ Alle varer har bevægelse de seneste 90 dage</div>'}
       </div>
-    </div>`;
+    </div>
+
+    ${(()=>{
+      // Avance: varer med både kostpris og sesu.dk-pris
+      const marginItems=items.map(i=>{
+        const cost=parseFloat(i.costPrice||0);
+        const m=findSesuPrice(i.name,i.sku);
+        const sell=m?m.price:0;
+        if(!cost||!sell) return null;
+        const margin=sell-cost;
+        const pct=Math.round(margin/sell*100);
+        return {...i,cost,sell,margin,pct};
+      }).filter(Boolean).sort((a,b)=>b.pct-a.pct);
+      if(!marginItems.length) return '';
+      const avgMargin=Math.round(marginItems.reduce((s,i)=>s+i.pct,0)/marginItems.length);
+      const totalMargin=marginItems.reduce((s,i)=>s+i.margin*parseInt(i.qty||0),0);
+      return `<div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <span class="card-title">Avanceanalyse — kostpris vs. sesu.dk</span>
+          <span style="font-size:11px;color:var(--ink-3)">${marginItems.length} varer · gns. ${avgMargin}% · pot. dækningsbidrag ${Math.round(totalMargin).toLocaleString('da-DK')} kr.</span>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Vare</th><th style="width:13%">Kostpris</th><th style="width:13%">Sesu.dk</th><th style="width:10%">Avance</th><th style="width:10%">Avance %</th><th style="width:14%">Dækningsbidrag</th></tr></thead>
+          <tbody>${marginItems.slice(0,15).map(i=>{
+            const db=i.margin*parseInt(i.qty||0);
+            const barW=Math.max(0,Math.min(100,i.pct));
+            return `<tr>
+              <td><div class="td-name">${esc(i.name)}</div>${catBadge(i.cat)}</td>
+              <td style="font-family:'IBM Plex Mono',monospace;font-size:12px">${i.cost.toLocaleString('da-DK')} kr.</td>
+              <td style="font-family:'IBM Plex Mono',monospace;font-size:12px">${i.sell.toLocaleString('da-DK')} kr.</td>
+              <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:${i.margin>0?'var(--green)':'var(--red)'}">${i.margin>0?'+':''}${i.margin.toLocaleString('da-DK')} kr.</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="flex:1;height:6px;background:var(--surface-2);border-radius:3px"><div style="width:${barW}%;height:100%;background:${i.pct>30?'var(--green)':i.pct>15?'var(--amber)':'var(--red)'};border-radius:3px"></div></div>
+                  <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:${i.pct>30?'var(--green)':i.pct>15?'var(--amber)':'var(--red)'}">${i.pct}%</span>
+                </div>
+              </td>
+              <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-2)">${db>0?Math.round(db).toLocaleString('da-DK')+' kr.':'—'}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table></div>
+        ${marginItems.length>15?`<div style="padding:8px 16px;font-size:11px;color:var(--ink-3)">Viser top 15 af ${marginItems.length} varer</div>`:''}
+      </div>`;
+    })()}`;
 }
 
 // ── LAGEROPTÆLLING ──
@@ -4515,6 +4625,7 @@ async function loadIndkoebsordrer(){
     allPO=Array.isArray(d)?d:[];
     poLoaded=true;
     renderIndkoebsordrer();
+    renderOversigtsAdvarsler();
   } catch(e){
     if(tbody) tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--red)">Fejl: ${esc(e.message)}</td></tr>`;
   }
