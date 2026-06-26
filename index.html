@@ -1920,7 +1920,7 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
 
 <script>
 const API = 'https://script.google.com/macros/s/AKfycbwdbhEo-na7UVPQ4raRAz22NhVxFzE8YvdyK1u06iTTKd4PDbdlQLU1jgHjhubgIUYZjw/exec';
-let CATS = JSON.parse(localStorage.getItem('lager_cats')||'null') || ['Bordben','Beslag','Hyldeplader','Skruer & bolte','Møbelben','Hjul & gliders','Andet'];
+let CATS; try { CATS=JSON.parse(localStorage.getItem('lager_cats')||'null')||['Bordben','Beslag','Hyldeplader','Skruer & bolte','Møbelben','Hjul & gliders','Andet']; } catch(e){ CATS=['Bordben','Beslag','Hyldeplader','Skruer & bolte','Møbelben','Hjul & gliders','Andet']; }
 const BADGE_POOL = ['badge-blue','badge-green','badge-amber','badge-gray','badge-blue','badge-green','badge-amber'];
 function getBadgeClass(cat){ const i=CATS.indexOf(cat); return i>=0?BADGE_POOL[i%BADGE_POOL.length]:'badge-gray'; }
 const TITLES = { oversigt:'Oversigt', varer:'Alle varer', rum:'Rum & zoner', forsendelser:'Forsendelser', priser:'Fragtpriser', indkob:'Indkøbsliste', historik:'Historik', optaelling:'Lageroptælling', modtagelse:'Varemodtagelse', leverandoerer:'Leverandører', rapporter:'Rapporter', indkoebsordrer:'Indkøbsordrer', salgsordrer:'Salgsordrer' };
@@ -1930,7 +1930,8 @@ let allTemplates=[], templatesLoaded=false;
 let histEntries=[], histLoaded=false;
 let allLeverandoerer=[], leverandoererLoaded=false;
 let recvDraft={}; // {itemId: receivedQty}
-let notifLowSet=new Set(); // ids already notified this session
+let notifLowSet=new Set();
+let selectedItems=new Set();
 let allPO=[], poLoaded=false;
 let autoTimer = null;
 
@@ -1974,12 +1975,15 @@ async function loadAll(quiet){
     const time = new Date().toLocaleTimeString('da',{hour:'2-digit',minute:'2-digit'});
     sync('ok', 'Opdateret '+time);
     const lowCount = items.filter(i=>parseInt(i.qty||0)<parseInt(i.minQty||0)).length;
-    document.getElementById('page-sub').textContent = items.length+' varer · '+rooms.length+' rum'+(lowCount?' · '+lowCount+' mangler':'')+' · opdateret '+time;
+    const pageSub=document.getElementById('page-sub'); if(pageSub) pageSub.textContent = items.length+' varer · '+rooms.length+' rum'+(lowCount?' · '+lowCount+' mangler':'')+' · opdateret '+time;
     renderAll();
     checkAndNotify();
     if(!autoTimer){
       autoTimer = setInterval(()=>{ if(!document.hidden) loadAll(true); }, 30000);
-      document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && items.length) loadAll(true); });
+      if(!window._visibilityListenerAdded){
+        window._visibilityListenerAdded=true;
+        document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && items.length) loadAll(true); });
+      }
     }
   } catch(e) {
     sync('err','Fejl');
@@ -2410,8 +2414,8 @@ function renderItems(){
     return catSort!==0 ? catSort : (a.name||'').localeCompare(b.name||'','da');
   });
   const tb = document.getElementById('items-tbody'), em = document.getElementById('items-empty');
-  if(!fil.length){ tb.innerHTML=''; em.style.display=''; document.getElementById('check-all').checked=false;
-    document.getElementById('items-value-total').style.display='none'; return; }
+  if(!fil.length){ tb.innerHTML=''; em.style.display=''; const ca=document.getElementById('check-all'); if(ca) ca.checked=false;
+    const ivt=document.getElementById('items-value-total'); if(ivt) ivt.style.display='none'; return; }
   em.style.display='none';
 
   let totalValue = 0, valuedCount = 0;
@@ -4006,20 +4010,6 @@ document.addEventListener('click', e => {
 });
 
 // ── CSV EXPORT ──
-function exportCSV(){
-  const rows = [['Varenavn','SKU','Kategori','Rum','Placering','Antal','Minimum','Note']];
-  items.forEach(i=>{
-    const r = rooms.find(r=>r.id===i.room);
-    rows.push([i.name, i.sku||'', i.cat, r?.name||'', i.shelf, i.qty, i.minQty, i.note||'']);
-  });
-  const csv = rows.map(r=>r.map(c=>'"'+String(c||'').replace(/"/g,'""')+'"').join(',')).join('\n');
-  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href=url; a.download='lager-'+new Date().toISOString().slice(0,10)+'.csv';
-  a.click(); URL.revokeObjectURL(url);
-  toast('CSV downloadet');
-}
 
 // ── NOTIFIKATIONER ──
 function checkAndNotify(){
@@ -6120,7 +6110,6 @@ async function savePackageContentsModal(shipId){
 }
 
 // ── BULK ACTIONS ──
-let selectedItems = new Set();
 
 function toggleCheck(id, cb){
   if(cb.checked) selectedItems.add(id);
@@ -6635,7 +6624,7 @@ function renderSO(){
     <td style="font-family:'IBM Plex Mono',monospace;font-size:12px">${so.lines?.length||0}</td>
     <td><span class="badge ${statusBadge[so.status]||'badge-gray'}">${statusLabel[so.status]||so.status}</span></td>
     <td style="text-align:right">
-      <button class="btn btn-ghost btn-sm" onclick="openPickList('${so.id}')">📋 Plukliste</button>
+      <button class="btn btn-ghost btn-sm" onclick="openSOPickList('${so.id}')">📋 Plukliste</button>
       <button class="btn btn-ghost btn-sm" onclick="openSOModal('${so.id}')">Rediger</button>
       <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteSO('${so.id}')">Slet</button>
     </td>
@@ -6696,7 +6685,7 @@ function deleteSO(id){
   loadSO(); allSO=allSO.filter(s=>s.id!==id); saveSO(); renderSO(); toast('Slettet');
 }
 
-function openPickList(soId){
+function openSOPickList(soId){
   loadSO();
   const so=allSO.find(s=>s.id===soId); if(!so) return;
   const title=document.getElementById('pick-modal-title');
@@ -6781,7 +6770,8 @@ function importCSV(input){
   const file=input.files[0]; if(!file) return;
   const reader=new FileReader();
   reader.onload=e=>{
-    const lines=e.target.result.split('\n').map(l=>l.trim()).filter(Boolean);
+    const raw=e.target.result.replace(/^﻿/,''); // strip UTF-8 BOM
+    const lines=raw.split('\n').map(l=>l.trim()).filter(Boolean);
     if(lines.length<2){ toast('Tom eller ugyldig CSV-fil'); return; }
     // Detect header
     const header=lines[0].split(',').map(h=>h.replace(/^"|"$/g,'').trim().toLowerCase());
