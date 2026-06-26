@@ -2628,6 +2628,9 @@ function openPackageModal(shipId){
   const ship = allShips.find(s=>String(s.id)===sid);
   const shipLabel = ship ? (ship.reference||ship.id) : sid;
   const contents = (shipPackageContents[sid] || []).map(e=>({...e}));
+  // First time opening (no saved contents yet) → default to auto-deduct
+  // Already has contents → already processed, default skip
+  const defaultSkip = contents.length > 0 && (shipPackageContents[sid+'__skip'] === true);
 
   function calcTotal(rows){
     return rows.reduce((sum,e)=>{
@@ -2663,6 +2666,7 @@ function openPackageModal(shipId){
       : '';
 
     const total = calcTotal(rows);
+    const skipChecked = window.pkgSkipDeduction ? 'checked' : '';
 
     document.getElementById('modal-box').innerHTML=`
       <div class="modal-head">
@@ -2674,12 +2678,21 @@ function openPackageModal(shipId){
         <div style="margin-top:14px">
           <div style="font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Tilføj vare</div>
           <input id="pkg-search" type="text" placeholder="Søg vare…" style="width:100%;border:1px solid var(--border-light);border-radius:6px;padding:7px 10px;font-size:13px;box-sizing:border-box"
-            oninput="openPackageModal(${shipId})" value="${esc(searchVal||'')}">
+            value="${esc(searchVal||'')}">
           ${searchResults ? `<div style="border:1px solid var(--border-light);border-top:none;border-radius:0 0 6px 6px;max-height:200px;overflow-y:auto;background:var(--bg)">${searchResults}</div>` : ''}
         </div>
-        <div style="margin-top:16px;padding-top:12px;border-top:2px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:13px;color:var(--ink-2)">Samlet pakkeværdi</span>
-          <span id="pkg-total" style="font-size:16px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--blue)">${total.toLocaleString('da-DK')} kr.</span>
+        <div style="margin-top:16px;padding-top:12px;border-top:2px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <span style="font-size:13px;color:var(--ink-2)">Samlet pakkeværdi</span>
+            <span id="pkg-total" style="font-size:16px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--blue)">${total.toLocaleString('da-DK')} kr.</span>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3);cursor:pointer">
+            <input type="checkbox" id="pkg-skip" ${skipChecked} onchange="window.pkgSkipDeduction=this.checked;document.getElementById('pkg-deduct-note').style.display=this.checked?'none':'block'">
+            Lager allerede fratrukket manuelt — spring lageraftræk over
+          </label>
+          <div id="pkg-deduct-note" style="display:${skipChecked?'none':'block'};margin-top:6px;font-size:11px;color:var(--ink-3);padding:6px 8px;background:var(--blue-dim);border-radius:4px">
+            Lagerantal fratrækkes automatisk ved gem
+          </div>
         </div>
       </div>
       <div class="modal-foot">
@@ -2688,36 +2701,67 @@ function openPackageModal(shipId){
       </div>`;
     openModal();
     const si = document.getElementById('pkg-search');
-    if(si){ si.focus(); if(searchVal) si.setSelectionRange(searchVal.length,searchVal.length); }
+    if(si){
+      si.focus();
+      if(searchVal) si.setSelectionRange(searchVal.length,searchVal.length);
+      si.oninput = ()=>render(window.pkgModalRows, si.value);
+    }
   }
 
   window.pkgModalRows = contents;
+  window.pkgSkipDeduction = defaultSkip;
   render(contents, '');
-
-  // Override input event to re-render with search
-  setTimeout(()=>{
-    const si = document.getElementById('pkg-search');
-    if(si) si.oninput = ()=>render(window.pkgModalRows, si.value);
-  }, 0);
 }
 
 async function savePackageContentsModal(shipId){
   const sid = String(shipId);
-  const rows = window.pkgModalRows || [];
+  const newRows = window.pkgModalRows || [];
+  const skipDeduction = window.pkgSkipDeduction === true;
+
+  // Compute diff: old contents vs new contents
+  const oldRows = shipPackageContents[sid] || [];
+  const oldMap = {};
+  oldRows.forEach(e => { oldMap[e.id] = e.qty; });
+  const newMap = {};
+  newRows.forEach(e => { newMap[e.id] = e.qty; });
+
   try {
     const d = await jsonp({
       action: 'savePackageContents',
       shipment_id: sid,
-      items_json: JSON.stringify(rows)
+      items_json: JSON.stringify(newRows)
     });
-    if(d && d.ok){
-      shipPackageContents[sid] = rows;
-      closeModal();
-      renderShipments(allShips);
-      toast('Pakkeindhold gemt');
-    } else {
-      toast('Fejl ved gemning');
+    if(!d || !d.ok){ toast('Fejl ved gemning'); return; }
+
+    shipPackageContents[sid] = newRows;
+    shipPackageContents[sid+'__skip'] = true; // mark as processed next time
+
+    if(!skipDeduction){
+      // Apply diff to warehouse quantities
+      const allIds = new Set([...Object.keys(oldMap), ...Object.keys(newMap)]);
+      const updates = [];
+      for(const id of allIds){
+        const oldQty = oldMap[id] || 0;
+        const newQty = newMap[id] || 0;
+        const diff = newQty - oldQty; // positive = more in package = deduct more
+        if(diff === 0) continue;
+        const it = items.find(i=>i.id===id);
+        if(!it) continue;
+        const warehouseQty = Math.max(0, parseInt(it.qty||0) - diff);
+        updates.push({ item: it, newQty: warehouseQty });
+      }
+      // Save each updated item
+      for(const u of updates){
+        const p = { ...u.item, qty: String(u.newQty), action:'saveItem', token: sessionStorage.getItem('lager_token')||'' };
+        await jsonp(p);
+        u.item.qty = String(u.newQty);
+      }
+      if(updates.length) renderItems();
     }
+
+    closeModal();
+    renderShipments(allShips);
+    toast(skipDeduction ? 'Pakkeindhold gemt' : 'Pakkeindhold gemt · lager opdateret');
   } catch(e) {
     toast('Fejl: '+e.message);
   }
