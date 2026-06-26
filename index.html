@@ -1858,7 +1858,24 @@ async function loadSesuPrices() {
 }
 
 // Normalize: lowercase, strip punctuation, expand kobber→copper so Danish matches English
-const NAME_XLAT = { kobber:'copper', sort:'black', hvid:'white', guld:'gold', sort:'black', stål:'steel', rund:'round' };
+const NAME_XLAT = { kobber:'copper', sort:'black', hvid:'white', guld:'gold', stål:'steel', rund:'round', natur:'natural', bøg:'beech', eg:'oak' };
+// Color/finish tokens — if item has one, sesu match must also have it (else image suppressed)
+const COLOR_TOKENS = ['black','white','copper','gold','silver','chrome','natural','beech','oak','grey','gray','sort','hvid','natur','eg','bøg','krom','sølv','guld','rød','blå','grøn','grå','late night'];
+
+function colorSet(normStr){
+  return new Set(COLOR_TOKENS.filter(c=>normStr.includes(c)));
+}
+
+function colorsCompatible(itemNorm, sesuNorm){
+  const ic = colorSet(itemNorm);
+  if(!ic.size) return true; // item has no color → always ok
+  const sc = colorSet(sesuNorm);
+  if(!sc.size) return false; // item has color, sesu product doesn't → mismatch
+  // At least one color in common
+  for(const c of ic){ if(sc.has(c)) return true; }
+  return false;
+}
+
 function normName(s){
   return (s||'').toLowerCase()
     .replace(/[^a-zæøå0-9]/g,' ')
@@ -1886,23 +1903,29 @@ function productCategory(n){
   return 'other';
 }
 
-function findSesuPrice(itemName, itemSku){
-  // 1) exact SKU match
-  const sku = (itemSku||'').trim();
-  if(sku && sesuPrices[sku] !== undefined) return { price: sesuPrices[sku], url: sesuUrls[sku]||'', image: sesuImages[sku]||'', how:'sku' };
-  // 2) name-based match via word overlap (Jaccard ≥ 0.28)
+function findSesuPrice(itemName, itemSku, itemImageUrl){
   const nn = normName(itemName);
+  // 1) exact SKU match — always trusted, no color check needed
+  const sku = (itemSku||'').trim();
+  if(sku && sesuPrices[sku] !== undefined){
+    const img = itemImageUrl || sesuImages[sku] || '';
+    return { price: sesuPrices[sku], url: sesuUrls[sku]||'', image: img, how:'sku' };
+  }
+  // 2) name-based match via word overlap (Jaccard ≥ 0.28)
   if(!nn) return null;
-  if(sesuByName[nn]) return { price: sesuByName[nn].price, url: sesuByName[nn].url||'', image: sesuByName[nn].image||'', sesuName: sesuByName[nn].name, how:'name' };
   const itemCat = productCategory(itemName);
-  let bestScore = 0, bestEntry = null;
+  let bestScore = 0, bestEntry = null, bestSn = null;
   for(const sn in sesuByName){
     if(itemCat !== 'other' && productCategory(sesuByName[sn].name) !== itemCat) continue;
-    const score = wordScore(nn, sn);
-    if(score > bestScore){ bestScore = score; bestEntry = sesuByName[sn]; }
+    const score = sn===nn ? 1 : wordScore(nn, sn);
+    if(score > bestScore){ bestScore = score; bestEntry = sesuByName[sn]; bestSn = sn; }
   }
-  if(bestScore >= 0.28 && bestEntry) return { price: bestEntry.price, url: bestEntry.url||'', image: bestEntry.image||'', sesuName: bestEntry.name, how:'name' };
-  return null;
+  if(bestScore >= 0.28 && bestEntry){
+    // Color guard: suppress image when colors don't match (price/url still returned)
+    const imgOk = itemImageUrl ? true : colorsCompatible(nn, bestSn||'');
+    return { price: bestEntry.price, url: bestEntry.url||'', image: imgOk ? (itemImageUrl||bestEntry.image||'') : '', sesuName: bestEntry.name, how:'name' };
+  }
+  return itemImageUrl ? { price: null, url:'', image: itemImageUrl, how:'custom' } : null;
 }
 
 async function assignSesuSku(itemId, sku) {
@@ -2175,7 +2198,7 @@ function renderItems(){
     const qty = parseInt(i.qty||0);
 
     // Match price by SKU, then by name
-    const match = sesuPricesLoaded ? findSesuPrice(i.name, i.sku) : null;
+    const match = (sesuPricesLoaded || i.imageUrl) ? findSesuPrice(i.name, i.sku, i.imageUrl||'') : null;
     const unitPrice = match ? match.price : null;
     const lineValue = unitPrice !== null ? unitPrice * qty : null;
     if(lineValue !== null){ totalValue += lineValue; valuedCount++; }
@@ -2327,10 +2350,11 @@ function openItemModal(id, preRoom, tpl){
   const costPrice=it?it.costPrice||'':'';
   const moq=it?it.moq||'':'';
   const reserved=it&&!isTpl?parseInt(it.reserved||0):0;
+  const imageUrl=it&&!isTpl?it.imageUrl||'':'';
   let bundleComps=[]; try{ if(it&&!isTpl&&it.bundle_json) bundleComps=JSON.parse(it.bundle_json); }catch(e){}
   window._bundleComps=bundleComps.slice();
   window._bundleEditId=id||null;
-  const sesuImg = sesuPricesLoaded ? (findSesuPrice(nm, sku)?.image||'') : '';
+  const sesuImg = imageUrl || (sesuPricesLoaded ? (findSesuPrice(nm, sku, imageUrl)?.image||'') : '');
   document.getElementById('modal-box').innerHTML=`
     <div class="modal-head">
       <div class="modal-title">${id?'Rediger vare':isTpl?'Kopiér vare':'Tilføj ny vare'}</div>
@@ -2344,6 +2368,9 @@ function openItemModal(id, preRoom, tpl){
       <div class="form-row">
         <div class="fg"><label>Kategori</label><select id="f-cat">${CATS.map(c=>`<option${c===cat?' selected':''}>${esc(c)}</option>`).join('')}</select></div>
         <div class="fg"><label>Varenr. / SKU</label><input id="f-sku" value="${esc(sku)}" placeholder="BB-71-K"></div>
+      </div>
+      <div class="fg"><label style="display:flex;justify-content:space-between;align-items:center">Billede-URL <span style="font-size:10px;font-weight:400;color:var(--ink-3)">Overskriver automatisk sesu.dk-billede</span></label><input id="f-imageurl" type="url" value="${esc(imageUrl)}" placeholder="https://sesu.dk/…/billede.jpg" oninput="const p=document.getElementById('item-img-prev');if(this.value){p.src=this.value;p.style.display=''}else p.style.display='none'">
+        <img id="item-img-prev" src="${esc(imageUrl)}" style="width:48px;height:48px;object-fit:contain;border-radius:4px;border:1px solid var(--border);margin-top:6px;${imageUrl?'':'display:none'}" onerror="this.style.display='none'">
       </div>
       <div class="fg"><label>Rum</label><select id="f-room">${rooms.map(r=>`<option value="${esc(r.id)}"${r.id===room?' selected':''}>${esc(r.name)}</option>`).join('')}${!rooms.length?'<option value="">— opret rum først —</option>':''}</select></div>
       <div class="fg"><label>Præcis placering</label><input id="f-shelf" value="${esc(shelf)}" placeholder="Reol 2, sektion B, hylde 3"></div>
@@ -2536,7 +2563,8 @@ async function saveItem(id, edit){
     costPrice:document.getElementById('f-cost')?.value||'',
     moq:document.getElementById('f-moq')?.value||'',
     reserved:document.getElementById('f-reserved')?.value||'0',
-    bundle_json:(document.getElementById('f-is-bundle')?.checked&&window._bundleComps?.length)?JSON.stringify(window._bundleComps):'' };
+    bundle_json:(document.getElementById('f-is-bundle')?.checked&&window._bundleComps?.length)?JSON.stringify(window._bundleComps):'',
+    imageUrl:document.getElementById('f-imageurl')?.value.trim()||'' };
   closeModal(); sync('load','Gemmer…');
   try {
     const r=await jsonp(p);
