@@ -1296,7 +1296,11 @@ async function loadAll(quiet){
 
 function renderAll(){ renderOverview(); renderItems(); renderRooms(); }
 
+let _sesuPricesPromise = null;
 async function loadSesuPrices() {
+  if(sesuPricesLoaded) return;
+  if(_sesuPricesPromise) return _sesuPricesPromise;
+  _sesuPricesPromise = (async () => {
   const btn = document.getElementById('sesu-btn');
   const statusEl = document.getElementById('sesu-status');
   if(btn) btn.disabled = true;
@@ -1332,6 +1336,8 @@ async function loadSesuPrices() {
     if(statusEl) statusEl.textContent = '— timeout';
   }
   if(btn) btn.disabled = false;
+  })();
+  return _sesuPricesPromise;
 }
 
 // Normalize: lowercase, strip punctuation, expand kobber→copper so Danish matches English
@@ -1830,9 +1836,9 @@ function showTab(t){
   const mnavAI = document.getElementById('mnav-ai');
   if(mnavAI) mnavAI.classList.remove('active');
   document.getElementById('page-title').textContent = TITLES[t] || t;
-  if(t === 'forsendelser' && !shipLoaded) loadShipments();
+  const priceReady = loadSesuPrices();
+  if(t === 'forsendelser' && !shipLoaded) priceReady.then(()=>{ if(!shipLoaded) loadShipments(); });
   if(t === 'priser' && !prisLoaded) loadPriser();
-  if(t === 'varer' && !sesuPricesLoaded) loadSesuPrices();
 }
 
 function openModal(){ document.getElementById('mb').classList.add('open'); }
