@@ -1556,24 +1556,37 @@ function renderOverview(){
 
 
 
-  document.getElementById('low-count').textContent = low.length ? low.length+' varer' : '';
+  const outOfStock = low.filter(i=>parseInt(i.qty||0)===0);
+  const lowStock   = low.filter(i=>parseInt(i.qty||0)>0);
+  document.getElementById('low-count').textContent = low.length ? outOfStock.length+' udsolgt · '+lowStock.length+' lav' : '';
   const lEl = document.getElementById('ov-low');
   if(!low.length){
     lEl.innerHTML = '<div class="card-padded" style="font-size:13px;color:var(--ink-3)">✓ Alle varer er over minimumsbeholdning</div>';
     return;
   }
-  lEl.innerHTML = low.map(i=>{
+  function rowHtml(i){
     const r = rooms.find(r=>r.id===i.room);
-    const pct = Math.min(Math.round((parseInt(i.qty||0)/Math.max(parseInt(i.minQty||1),1))*100),100);
+    const qty = parseInt(i.qty||0);
+    const pct = Math.min(Math.round((qty/Math.max(parseInt(i.minQty||1),1))*100),100);
     return `<div class="low-row">
       <div class="low-row-top">
         <span class="low-row-name">${esc(i.name)}</span>
-        <span class="low-row-qty">${esc(i.qty)} / ${esc(i.minQty)}</span>
+        <span class="low-row-qty">${qty===0?'Udsolgt':esc(i.qty)+' / '+esc(i.minQty)}</span>
       </div>
       <div class="low-row-loc">${r?esc(r.name):''} · ${esc(i.shelf)}</div>
-      <div class="progress"><div class="progress-fill low" style="width:${pct}%"></div></div>
+      ${qty>0?`<div class="progress"><div class="progress-fill low" style="width:${pct}%"></div></div>`:''}
     </div>`;
-  }).join('');
+  }
+  let html = '';
+  if(outOfStock.length){
+    html += `<div style="padding:8px 16px 4px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--red);border-top:1px solid var(--border-light)">Udsolgt (${outOfStock.length})</div>`;
+    html += outOfStock.map(rowHtml).join('');
+  }
+  if(lowStock.length){
+    html += `<div style="padding:8px 16px 4px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);border-top:1px solid var(--border-light)">Lav beholdning (${lowStock.length})</div>`;
+    html += lowStock.map(rowHtml).join('');
+  }
+  lEl.innerHTML = html;
 }
 
 function renderItems(){
