@@ -1062,6 +1062,60 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
 .tracking-link { font-size:11px; font-family:'IBM Plex Mono',monospace; color:var(--blue); text-decoration:none; }
 .tracking-link:hover { text-decoration:underline; }
 
+/* ── LAGEROPTÆLLING ── */
+.ot-row { transition: background .15s; }
+.ot-row.ot-changed { background: var(--amber-dim); }
+.ot-row.ot-surplus { background: var(--blue-dim); }
+.ot-input {
+  width: 68px; text-align: center;
+  border: 1.5px solid var(--border); border-radius: 6px;
+  padding: 4px 8px; font-size: 13px; font-family: 'IBM Plex Mono', monospace;
+  background: var(--white); color: var(--ink);
+  transition: border-color .12s;
+}
+.ot-input:focus { border-color: var(--accent); outline: none; }
+.ot-input.changed { border-color: var(--amber); }
+.ot-summary-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border-radius: var(--radius);
+  background: var(--amber-dim); border: 1px solid rgba(122,90,26,.15);
+  font-size: 13px; color: var(--amber); font-weight: 500;
+  margin-bottom: 16px;
+}
+.ot-summary-bar.ot-clean { background: var(--green-dim); border-color: rgba(45,106,45,.15); color: var(--green); }
+
+/* ── SCANNER MODAL ── */
+.scanner-modal {
+  position: fixed; inset: 0; z-index: 1200;
+  background: rgba(0,0,0,.85);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn .15s ease;
+}
+.scanner-box {
+  background: #0F0D0B; border-radius: 20px;
+  width: min(480px, 92vw); overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+.scanner-video { width: 100%; display: block; border-radius: 0; aspect-ratio: 4/3; object-fit: cover; }
+.scanner-status { text-align: center; padding: 14px 20px; font-size: 13px; color: rgba(255,255,255,.6); }
+.scanner-crosshair {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none;
+}
+.scanner-frame {
+  width: 200px; height: 200px;
+  border: 2px solid var(--accent); border-radius: 12px;
+  box-shadow: 0 0 0 4000px rgba(0,0,0,.5);
+}
+
+/* ── DEADLINE PILL ── */
+.deadline-pill {
+  display: inline-flex; align-items: center;
+  font-size: 10px; font-weight: 600;
+  padding: 2px 7px; border-radius: 4px;
+  background: var(--amber-dim); color: var(--amber);
+  white-space: nowrap;
+}
+
 /* ── HISTORIK DELTA BADGES ── */
 .delta-up {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1125,6 +1179,9 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
       </button>
       <button class="nav-item" onclick="showTab('varer')" id="nav-varer">
         <span class="nav-icon">☰</span> Alle varer
+      </button>
+      <button class="nav-sub-item" onclick="showTab('optaelling')" id="nav-optaelling">
+        <span class="nav-sub-icon">✓</span> Lageroptælling
       </button>
       <button class="nav-sub-item" onclick="showTab('indkob')" id="nav-indkob">
         <span class="nav-sub-icon">🛒</span> Indkøbsliste
@@ -1240,6 +1297,7 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
             <input type="text" id="search" placeholder="Søg varenavn, rum, placering, SKU…" oninput="renderItems()">
           </div>
           <div class="filter-chips" id="filter-chips"></div>
+          <button class="btn btn-ghost btn-sm" onclick="openScanner()" title="Scan stregkode eller QR-kode">📷 Scan</button>
           <button class="btn btn-ghost btn-sm" id="sesu-btn" onclick="loadSesuPrices()" title="Hent aktuelle priser fra sesu.dk" style="white-space:nowrap">⟳ sesu.dk priser <span id="sesu-status" style="font-size:10px;color:var(--ink-3)"></span></button>
         </div>
         <div class="bulk-bar" id="bulk-bar">
@@ -1285,11 +1343,45 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
         </div>
       </div>
 
+      <!-- LAGEROPTÆLLING -->
+      <div id="tab-optaelling" class="view" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="ot-room-filter" onchange="renderOptaelling()" style="font-size:13px;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--white);color:var(--ink)">
+              <option value="">Alle rum</option>
+            </select>
+            <div class="search-input-wrap" style="min-width:200px">
+              <span class="search-icon">⌕</span>
+              <input type="text" id="ot-search" placeholder="Søg vare…" oninput="renderOptaelling()">
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="openScanner()">📷 Scan stregkode</button>
+          </div>
+          <button id="ot-save-btn" class="btn btn-primary" onclick="saveOptaelling()" disabled>Gem ændringer</button>
+        </div>
+        <div id="ot-summary" class="ot-summary-bar ot-clean">Alt stemmer — ingen ændringer endnu</div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Vare</th>
+                <th style="width:12%">Kategori</th>
+                <th style="width:14%">Placering</th>
+                <th style="width:9%">Nuværende</th>
+                <th style="width:11%">Optalt antal</th>
+                <th style="width:8%">Δ</th>
+              </tr></thead>
+              <tbody id="ot-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <!-- INDKØBSLISTE -->
       <div id="tab-indkob" class="view" style="display:none">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
           <div style="font-size:13px;color:var(--ink-3)">Varer under minimumsbeholdning — klar til genbestilling</div>
           <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="openGenbestilling()">📧 Send ordre</button>
             <button class="btn btn-ghost btn-sm" onclick="copyShoppingList()">📋 Kopier liste</button>
             <button class="btn btn-ghost btn-sm" onclick="window.print()">🖨 Print</button>
           </div>
@@ -1305,7 +1397,8 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
                 <th style="width:8%">Mangler</th>
                 <th style="width:11%">Enhedspris</th>
                 <th style="width:11%">Est. kostpris</th>
-                <th style="width:12%"></th>
+                <th style="width:10%">Bestil inden</th>
+                <th style="width:9%"></th>
               </tr></thead>
               <tbody id="indkob-tbody">
                 <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--ink-3)">Henter data…</td></tr>
@@ -1435,7 +1528,7 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
 const API = 'https://script.google.com/macros/s/AKfycbwdbhEo-na7UVPQ4raRAz22NhVxFzE8YvdyK1u06iTTKd4PDbdlQLU1jgHjhubgIUYZjw/exec';
 const CATS = ['Bordben','Beslag','Hyldeplader','Skruer & bolte','Møbelben','Hjul & gliders','Andet'];
 const BADGE = { Bordben:'badge-blue', Beslag:'badge-green', Hyldeplader:'badge-amber', 'Skruer & bolte':'badge-gray', Møbelben:'badge-blue', 'Hjul & gliders':'badge-green', Andet:'badge-gray' };
-const TITLES = { oversigt:'Oversigt', varer:'Alle varer', rum:'Rum & zoner', forsendelser:'Forsendelser', priser:'Fragtpriser', indkob:'Indkøbsliste', historik:'Historik' };
+const TITLES = { oversigt:'Oversigt', varer:'Alle varer', rum:'Rum & zoner', forsendelser:'Forsendelser', priser:'Fragtpriser', indkob:'Indkøbsliste', historik:'Historik', optaelling:'Lageroptælling' };
 
 let items=[], rooms=[], selRoom=null, activeCat='Alle';
 let allTemplates=[], templatesLoaded=false;
@@ -1928,6 +2021,7 @@ function openItemModal(id, preRoom){
   const room=it?it.room:(preRoom||rooms[0]?.id||'');
   const shelf=it?it.shelf:'', qty=it?parseInt(it.qty):0;
   const minQ=it?parseInt(it.minQty):10, sku=it?it.sku:'', note=it?it.note:'';
+  const lead=it?parseInt(it.leadDays||0):0;
   document.getElementById('modal-box').innerHTML=`
     <div class="modal-head">
       <div class="modal-title">${id?'Rediger vare':'Tilføj ny vare'}</div>
@@ -1953,6 +2047,7 @@ function openItemModal(id, preRoom){
           </div>
         </div>
         <div class="fg"><label>Min. beholdning</label><input id="f-minq" type="number" value="${minQ}" min="0"></div>
+        <div class="fg"><label>Leveringstid (dage)</label><input id="f-lead" type="number" value="${lead||''}" min="0" placeholder="—" title="Dage fra bestilling til hylde"></div>
       </div>
       <div class="fg"><label>Note</label><textarea id="f-note" placeholder="Evt. kommentar…">${esc(note)}</textarea></div>
     </div>
@@ -1977,7 +2072,8 @@ async function saveItem(id, edit){
     qty:newQty,
     minQty:document.getElementById('f-minq').value,
     sku:document.getElementById('f-sku').value.trim(),
-    note:document.getElementById('f-note').value.trim() };
+    note:document.getElementById('f-note').value.trim(),
+    leadDays:document.getElementById('f-lead')?.value||'' };
   closeModal(); sync('load','Gemmer…');
   try {
     const r=await jsonp(p);
@@ -2037,9 +2133,9 @@ async function delRoom(id){
 }
 
 function showTab(t){
-  const VALID = new Set(['oversigt','varer','rum','forsendelser','priser','indkob','historik']);
+  const VALID = new Set(['oversigt','varer','rum','forsendelser','priser','indkob','historik','optaelling']);
   if(!VALID.has(t)) t = 'oversigt';
-  ['oversigt','varer','rum','forsendelser','priser','indkob','historik'].forEach(n=>{
+  ['oversigt','varer','rum','forsendelser','priser','indkob','historik','optaelling'].forEach(n=>{
     const el = document.getElementById('tab-'+n);
     if(el) el.style.display = n===t ? 'block' : 'none';
     const nav = document.getElementById('nav-'+n);
@@ -2058,6 +2154,7 @@ function showTab(t){
   if(t === 'forsendelser' && !shipLoaded) priceReady.then(()=>{ if(!shipLoaded) loadShipments(); });
   if(t === 'forsendelser' && !templatesLoaded) loadTemplates();
   if(t === 'priser' && !prisLoaded) loadPriser();
+  if(t === 'optaelling') renderOptaelling();
   if(t === 'indkob') priceReady.then(()=>renderIndkob());
   if(t === 'historik' && !histLoaded) loadHistorik();
 }
@@ -2854,7 +2951,7 @@ if (sessionStorage.getItem('lager_auth') === '1') {
   resetInactivityTimer();
   // Gendan aktiv fane fra URL-hash eller localStorage
   window.addEventListener('DOMContentLoaded', () => {
-    const VALID = new Set(['oversigt','varer','rum','forsendelser','priser','indkob','historik']);
+    const VALID = new Set(['oversigt','varer','rum','forsendelser','priser','indkob','historik','optaelling']);
     const fromHash = location.hash.replace('#','');
     const saved = VALID.has(fromHash) ? fromHash : (localStorage.getItem('activeTab') || 'oversigt');
     if(saved !== 'oversigt') showTab(saved);
@@ -2926,6 +3023,284 @@ function exportCSV(){
   toast('CSV downloadet');
 }
 
+// ── LAGEROPTÆLLING ──
+let stocktakeDraft = {}; // { itemId: counted qty (number) }
+
+function renderOptaelling(){
+  const el = document.getElementById('tab-optaelling');
+  if(!el || el.style.display==='none') return;
+
+  // Populate room filter
+  const rf = document.getElementById('ot-room-filter');
+  if(rf && rf.options.length <= 1){
+    rooms.forEach(r=>{ const o=document.createElement('option'); o.value=r.id; o.textContent=r.name; rf.appendChild(o); });
+  }
+
+  const roomFilter = rf?.value || '';
+  const q = (document.getElementById('ot-search')?.value||'').toLowerCase();
+  let fil = items.filter(i=>{
+    if(roomFilter && i.room!==roomFilter) return false;
+    if(q && !i.name.toLowerCase().includes(q) && !i.sku.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const tbody = document.getElementById('ot-tbody');
+  if(!tbody) return;
+
+  tbody.innerHTML = fil.map(i=>{
+    const cur = parseInt(i.qty||0);
+    const counted = stocktakeDraft[i.id] !== undefined ? stocktakeDraft[i.id] : cur;
+    const delta = counted - cur;
+    const changed = delta !== 0;
+    const deltaHtml = delta > 0
+      ? `<span class="delta-up">+${delta}</span>`
+      : delta < 0
+        ? `<span class="delta-down">${delta}</span>`
+        : `<span style="color:var(--ink-3);font-size:12px">—</span>`;
+    const rowClass = delta > 0 ? 'ot-row ot-surplus' : delta < 0 ? 'ot-row ot-changed' : 'ot-row';
+    return `<tr class="${rowClass}" id="ot-row-${i.id}">
+      <td><div class="td-name">${esc(i.name)}</div></td>
+      <td>${catBadge(i.cat)}</td>
+      <td style="font-size:12px;color:var(--ink-3)">${(() => { const r=rooms.find(r=>r.id===i.room); return r?esc(r.name)+' · '+esc(i.shelf):esc(i.shelf); })()}</td>
+      <td style="font-family:'IBM Plex Mono',monospace;font-weight:600">${cur}</td>
+      <td><input type="number" min="0" class="ot-input${changed?' changed':''}" id="ot-inp-${i.id}" value="${counted}"
+        oninput="stocktakeDraft['${i.id}']=Math.max(0,parseInt(this.value)||0);this.classList.toggle('changed',stocktakeDraft['${i.id}']!==${cur});updateOtSummary()"></td>
+      <td>${deltaHtml}</td>
+    </tr>`;
+  }).join('');
+
+  updateOtSummary();
+}
+
+function updateOtSummary(){
+  let changes = 0, netDelta = 0;
+  Object.entries(stocktakeDraft).forEach(([id, counted]) => {
+    const it = items.find(i=>i.id===id);
+    if(!it) return;
+    const cur = parseInt(it.qty||0);
+    if(counted !== cur){ changes++; netDelta += (counted - cur); }
+    // Update row class live
+    const row = document.getElementById('ot-row-'+id);
+    if(row){
+      const d = counted - cur;
+      row.className = d > 0 ? 'ot-row ot-surplus' : d < 0 ? 'ot-row ot-changed' : 'ot-row';
+      const deltaCell = row.cells[5];
+      if(deltaCell) deltaCell.innerHTML = d > 0
+        ? `<span class="delta-up">+${d}</span>`
+        : d < 0 ? `<span class="delta-down">${d}</span>`
+        : `<span style="color:var(--ink-3);font-size:12px">—</span>`;
+    }
+  });
+  const sum = document.getElementById('ot-summary');
+  const btn = document.getElementById('ot-save-btn');
+  if(sum){
+    if(changes === 0){
+      sum.className = 'ot-summary-bar ot-clean';
+      sum.textContent = 'Alt stemmer — ingen ændringer endnu';
+    } else {
+      sum.className = 'ot-summary-bar';
+      sum.textContent = `${changes} ændring${changes===1?'':'er'} · netto ${netDelta>0?'+':''}${netDelta} stk`;
+    }
+  }
+  if(btn) btn.disabled = changes === 0;
+}
+
+async function saveOptaelling(){
+  const changed = Object.entries(stocktakeDraft).filter(([id, counted]) => {
+    const it = items.find(i=>i.id===id);
+    return it && counted !== parseInt(it.qty||0);
+  });
+  if(!changed.length){ toast('Ingen ændringer at gemme'); return; }
+  const btn = document.getElementById('ot-save-btn');
+  if(btn){ btn.disabled=true; btn.textContent='Gemmer…'; }
+  sync('load','Gemmer optælling…');
+  try {
+    await Promise.all(changed.map(async ([id, counted]) => {
+      const it = items.find(i=>i.id===id);
+      if(!it) return;
+      const orig = parseInt(it.qty||0);
+      await jsonp({ action:'saveItem', ...it, qty:counted });
+      jsonp({ action:'logMovement', item_id:id, item_name:it.name, from_qty:orig, to_qty:counted, note:'Optælling' }).catch(()=>{});
+    }));
+    histLoaded = false;
+    stocktakeDraft = {};
+    toast(`${changed.length} vare${changed.length===1?'':'r'} opdateret fra optælling`);
+    await loadAll();
+  } catch(e){
+    sync('err','Fejl'); showErr('Kunne ikke gemme optælling: '+e.message);
+  } finally {
+    if(btn){ btn.textContent='Gem ændringer'; }
+  }
+}
+
+function otJumpToItem(id){
+  const inp = document.getElementById('ot-inp-'+id);
+  if(!inp){ toast('Vare ikke vist — fjern evt. filter'); return; }
+  inp.scrollIntoView({ behavior:'smooth', block:'center' });
+  inp.focus(); inp.select();
+}
+
+// ── STREGKODE-SCANNER ──
+let scannerStream = null;
+
+function openScanner(){
+  if(!navigator.mediaDevices?.getUserMedia){ toast('Kamera ikke tilgængeligt i denne browser'); return; }
+
+  const inOtaelling = document.getElementById('tab-optaelling')?.style.display !== 'none';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'scanner-overlay';
+  overlay.className = 'scanner-modal';
+  overlay.innerHTML = `
+    <div class="scanner-box">
+      <div style="padding:14px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,.1)">
+        <span style="color:#fff;font-size:14px;font-weight:600">📷 Scan stregkode / QR</span>
+        <button onclick="closeScanner()" style="border:none;background:none;cursor:pointer;color:rgba(255,255,255,.6);font-size:18px">✕</button>
+      </div>
+      <div style="position:relative">
+        <video id="scanner-vid" class="scanner-video" autoplay muted playsinline></video>
+        <div class="scanner-crosshair"><div class="scanner-frame"></div></div>
+      </div>
+      <div id="scanner-status" class="scanner-status">Hold stregkoden inden for rammen…</div>
+      <div style="padding:0 20px 16px;text-align:center">
+        <button class="btn btn-ghost btn-sm" onclick="closeScanner()">Annuller</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment' } })
+    .then(stream => {
+      scannerStream = stream;
+      const vid = document.getElementById('scanner-vid');
+      if(!vid){ closeScanner(); return; }
+      vid.srcObject = stream;
+
+      const detector = 'BarcodeDetector' in window
+        ? new BarcodeDetector({ formats:['ean_13','ean_8','code_128','code_39','qr_code','data_matrix'] })
+        : null;
+
+      if(!detector){
+        document.getElementById('scanner-status').textContent = '⚠ Stregkode-scanning kræver Chrome/Edge. QR-koder kan stadig matches via SKU.';
+      }
+
+      let scanning = true;
+      const poll = setInterval(async () => {
+        if(!scanning || !document.getElementById('scanner-overlay')) { clearInterval(poll); return; }
+        if(!detector || vid.readyState < 2) return;
+        try {
+          const codes = await detector.detect(vid);
+          if(!codes.length) return;
+          const raw = codes[0].rawValue;
+          clearInterval(poll);
+          scanning = false;
+          handleScan(raw, inOtaelling);
+        } catch(e){}
+      }, 300);
+    })
+    .catch(err => {
+      const st = document.getElementById('scanner-status');
+      if(st) st.textContent = 'Kamera-adgang nægtet: '+err.message;
+    });
+}
+
+function closeScanner(){
+  if(scannerStream){ scannerStream.getTracks().forEach(t=>t.stop()); scannerStream=null; }
+  document.getElementById('scanner-overlay')?.remove();
+}
+
+function handleScan(raw, inOtaelling){
+  closeScanner();
+  // 1) Egne QR-koder starter med "lager:itemId"
+  let found = null;
+  if(raw.startsWith('lager:')){
+    const id = raw.split('\n')[0].replace('lager:','').trim();
+    found = items.find(i=>i.id===id);
+  }
+  // 2) Match på SKU
+  if(!found) found = items.find(i=>i.sku && i.sku.trim().toUpperCase() === raw.trim().toUpperCase());
+  // 3) Delvis SKU-match
+  if(!found) found = items.find(i=>i.sku && raw.includes(i.sku.trim()));
+
+  if(!found){ toast('Ingen vare fundet for: '+raw.slice(0,30)); return; }
+
+  if(inOtaelling){
+    showTab('optaelling');
+    setTimeout(()=>otJumpToItem(found.id), 150);
+    toast('Fundet: '+found.name);
+  } else {
+    showTab('varer');
+    document.getElementById('search').value = found.name;
+    renderItems();
+    setTimeout(()=>openItemModal(found.id, null), 200);
+  }
+}
+
+// ── GENBESTILLINGSORDRE ──
+function openGenbestilling(){
+  const low = items.filter(i=>parseInt(i.qty||0)<parseInt(i.minQty||0));
+  if(!low.length){ toast('Ingen varer mangler — intet at bestille'); return; }
+
+  const savedEmail = localStorage.getItem('lager_order_email')||'';
+  const today = new Date().toLocaleDateString('da-DK',{day:'numeric',month:'long',year:'numeric'});
+
+  const rows = low.map(i=>{
+    const need = parseInt(i.minQty||0)-parseInt(i.qty||0);
+    const match = sesuPricesLoaded ? findSesuPrice(i.name,i.sku) : null;
+    const priceStr = match ? match.price.toLocaleString('da-DK')+' kr./stk' : '—';
+    return { name:i.name, sku:i.sku, need, priceStr, unitPrice:match?match.price:null };
+  });
+
+  const totalCost = rows.reduce((s,r)=>s+(r.unitPrice?r.unitPrice*r.need:0),0);
+
+  const bodyText = [
+    'Genbestilling '+today,
+    '',
+    rows.map(r=>`${r.name}${r.sku?' ('+r.sku+')':''}: ${r.need} stk — ${r.priceStr}`).join('\n'),
+    '',
+    totalCost > 0 ? 'Samlet est. kostpris: '+totalCost.toLocaleString('da-DK')+' kr.' : '',
+    '',
+    'Med venlig hilsen,',
+    'SESU Lagersystem'
+  ].filter(l=>l!==undefined).join('\n').trim();
+
+  document.getElementById('modal-box').innerHTML=`
+    <div class="modal-head">
+      <div class="modal-title">📧 Genbestillingsordre</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="fg"><label>Modtager e-mail</label><input id="order-email" type="email" value="${esc(savedEmail)}" placeholder="leverandoer@eksempel.dk" oninput="localStorage.setItem('lager_order_email',this.value)"></div>
+        <div class="fg"><label>Emne</label><input id="order-subject" value="Genbestilling ${today}"></div>
+      </div>
+      <div class="fg"><label>Ordretekst</label><textarea id="order-body" style="min-height:220px;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.6">${esc(bodyText)}</textarea></div>
+      <div style="font-size:12px;color:var(--ink-3)">
+        ${low.length} varenr. · ${rows.reduce((s,r)=>s+r.need,0)} stk i alt
+        ${totalCost>0?' · '+totalCost.toLocaleString('da-DK')+' kr. est. kostpris':''}
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuller</button>
+      <button class="btn" onclick="copyOrderText()">📋 Kopier tekst</button>
+      <button class="btn btn-primary" onclick="sendOrderMail()">📧 Åbn i mail</button>
+    </div>`;
+  openModal();
+}
+
+function copyOrderText(){
+  const text = document.getElementById('order-body')?.value||'';
+  navigator.clipboard.writeText(text).then(()=>toast('Ordretekst kopieret ✓')).catch(()=>toast('Kopiering fejlede'));
+}
+
+function sendOrderMail(){
+  const email = document.getElementById('order-email')?.value||'';
+  const subject = document.getElementById('order-subject')?.value||'Genbestilling';
+  const body = document.getElementById('order-body')?.value||'';
+  const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = mailto;
+  closeModal();
+}
+
 // ── INDKØBSLISTE ──
 function renderIndkob(){
   const el = document.getElementById('tab-indkob');
@@ -2964,7 +3339,7 @@ function renderIndkob(){
   if(!tbody) return;
 
   if(!low.length){
-    tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="empty-icon">✓</div><div class="empty-text">Alt er over minimumsbeholdning</div></div></td></tr>';
+    tbody.innerHTML='<tr><td colspan="8"><div class="empty"><div class="empty-icon">✓</div><div class="empty-text">Alt er over minimumsbeholdning</div></div></td></tr>';
     return;
   }
 
@@ -2976,6 +3351,15 @@ function renderIndkob(){
     const lineCost=unitPrice?unitPrice*need:null;
     const sesuLink=match&&match.url?`<a href="${match.url}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="font-size:10px">↗ sesu.dk</a>`:'';
     const qty=parseInt(i.qty||0);
+    const lead=parseInt(i.leadDays||0);
+    let deadlineHtml='—';
+    if(lead>0){
+      const d=new Date(Date.now()+lead*86400000);
+      const fmt=d.toLocaleDateString('da-DK',{day:'numeric',month:'short'});
+      const daysLeft=lead;
+      const urgent=daysLeft<=3;
+      deadlineHtml=`<span class="deadline-pill" style="${urgent?'background:var(--red-dim);color:var(--red)':''}">${fmt} (${daysLeft}d)</span>`;
+    }
     return `<tr>
       <td><div class="td-name">${esc(i.name)}</div>${catBadge(i.cat)}</td>
       <td style="font-size:12px;color:var(--ink-3)">${r?esc(r.name)+' · ':''}<span style="font-family:'IBM Plex Mono',monospace">${esc(i.shelf)}</span></td>
@@ -2983,17 +3367,18 @@ function renderIndkob(){
       <td><span class="delta-down">+${need}</span></td>
       <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--blue)">${unitPrice?unitPrice.toLocaleString('da-DK')+' kr.':'—'}</td>
       <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600">${lineCost?lineCost.toLocaleString('da-DK')+' kr.':'—'}</td>
+      <td>${deadlineHtml}</td>
       <td><div class="td-actions">${sesuLink}<button class="btn btn-ghost btn-sm" onclick="openItemModal('${i.id}',null)">Rediger</button></div></td>
     </tr>`;
   }
 
   let html='';
   if(out.length){
-    html+=`<tr><td colspan="7" style="padding:8px 16px 4px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--red);background:var(--surface)">Udsolgt (${out.length})</td></tr>`;
+    html+=`<tr><td colspan="8" style="padding:8px 16px 4px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--red);background:var(--surface)">Udsolgt (${out.length})</td></tr>`;
     html+=out.map(rowHtml).join('');
   }
   if(lowS.length){
-    html+=`<tr><td colspan="7" style="padding:8px 16px 4px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);background:var(--surface)">Lav beholdning (${lowS.length})</td></tr>`;
+    html+=`<tr><td colspan="8" style="padding:8px 16px 4px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);background:var(--surface)">Lav beholdning (${lowS.length})</td></tr>`;
     html+=lowS.map(rowHtml).join('');
   }
   tbody.innerHTML=html;
@@ -3160,7 +3545,7 @@ function showQR(id){
   const i = items.find(i=>i.id===id);
   if(!i) return;
   const r = rooms.find(r=>r.id===i.room);
-  const text = [i.name, i.sku?'SKU: '+i.sku:'', r?r.name+' · '+i.shelf:i.shelf, 'Antal: '+i.qty].filter(Boolean).join('\n');
+  const text = ['lager:'+i.id, i.name, i.sku?'SKU: '+i.sku:'', r?r.name+' · '+i.shelf:i.shelf, 'Antal: '+i.qty].filter(Boolean).join('\n');
   const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data='+encodeURIComponent(text);
   document.getElementById('modal-box').innerHTML=`
     <div class="modal-head">
