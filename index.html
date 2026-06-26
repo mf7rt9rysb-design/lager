@@ -1601,12 +1601,17 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
           <div style="font-size:13px;color:var(--ink-3)">Spor bestillinger fra oprettelse til modtagelse</div>
           <div style="display:flex;gap:8px">
+            <div style="display:flex;background:var(--surface-2);border-radius:var(--radius);padding:2px">
+              <button id="po-view-list" class="btn btn-ghost btn-sm" style="font-size:11px" onclick="setPOView('liste')">☰ Liste</button>
+              <button id="po-view-kal" class="btn btn-ghost btn-sm" style="font-size:11px" onclick="setPOView('kalender')">📅 Kalender</button>
+            </div>
             <button class="btn btn-ghost btn-sm" onclick="poLoaded=false;loadIndkoebsordrer()">⟳ Opdater</button>
             <button class="btn btn-primary btn-sm" onclick="openPOModal(null)">+ Ny indkøbsordre</button>
           </div>
         </div>
         <div id="po-stats" class="stats-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px"></div>
-        <div class="card">
+        <!-- Liste-visning -->
+        <div id="po-list-view" class="card">
           <div class="table-wrap">
             <table>
               <thead><tr>
@@ -1622,6 +1627,20 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
                 <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--ink-3)">Henter…</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+        <!-- Kalender-visning -->
+        <div id="po-kalender-view" style="display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <button class="btn btn-ghost btn-sm" onclick="moveKal(-1)">‹ Forrige</button>
+            <div id="kal-titel" style="font-weight:600;font-size:15px"></div>
+            <button class="btn btn-ghost btn-sm" onclick="moveKal(1)">Næste ›</button>
+          </div>
+          <div id="kal-grid"></div>
+          <div style="display:flex;gap:16px;margin-top:12px;font-size:11px;color:var(--ink-3)">
+            <span><span style="display:inline-block;width:10px;height:10px;background:var(--blue);border-radius:50%;margin-right:4px"></span>Forv. levering</span>
+            <span><span style="display:inline-block;width:10px;height:10px;background:var(--red);border-radius:50%;margin-right:4px"></span>Forsinket</span>
+            <span><span style="display:inline-block;width:10px;height:10px;background:var(--amber);border-radius:50%;margin-right:4px"></span>Bestil senest</span>
           </div>
         </div>
       </div>
@@ -1773,10 +1792,11 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
               <thead><tr>
                 <th style="width:13%">Reference</th>
                 <th>Kunde</th>
-                <th style="width:13%">Dato</th>
+                <th style="width:12%">Dato</th>
                 <th style="width:10%">Linjer</th>
-                <th style="width:10%">Status</th>
-                <th style="width:16%"></th>
+                <th style="width:13%">Total</th>
+                <th style="width:9%">Status</th>
+                <th style="width:15%"></th>
               </tr></thead>
               <tbody id="so-tbody">
                 <tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--ink-3)">Ingen salgsordrer endnu</td></tr>
@@ -1819,6 +1839,20 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
   </main>
 </div>
 
+<!-- FORBRUGSGRAF MODAL -->
+<div id="graf-modal-overlay" onclick="if(event.target===this)closeGrafModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:8500;align-items:center;justify-content:center">
+  <div style="width:min(680px,96vw);background:var(--white);border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.2)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)">
+      <div style="font-weight:600;font-size:15px" id="graf-modal-title">Forbrug</div>
+      <button onclick="closeGrafModal()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--ink-3);line-height:1">×</button>
+    </div>
+    <div style="padding:20px 22px">
+      <canvas id="graf-canvas" height="200"></canvas>
+      <div id="graf-stats" style="display:flex;gap:20px;margin-top:16px;flex-wrap:wrap"></div>
+    </div>
+  </div>
+</div>
+
 <!-- SALGSORDRE MODAL -->
 <div id="so-modal-overlay" onclick="if(event.target===this)closeSOModal()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:8000;align-items:flex-start;justify-content:center;padding-top:48px;overflow-y:auto">
   <div style="width:min(680px,96vw);background:var(--white);border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.2);margin-bottom:48px">
@@ -1850,7 +1884,11 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
           <label style="font-size:12px;font-weight:600;color:var(--ink-2)">Varelinjer</label>
           <button class="btn btn-ghost btn-sm" onclick="addSOLine()">+ Tilføj linje</button>
         </div>
+        <div style="display:grid;grid-template-columns:1fr 80px 90px 32px;gap:6px;font-size:11px;font-weight:600;color:var(--ink-3);padding:0 0 4px 0">
+          <span>Vare</span><span style="text-align:center">Antal</span><span style="text-align:center">Salgspris</span><span></span>
+        </div>
         <div id="so-lines" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div id="so-total" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);text-align:right;font-size:13px;color:var(--ink-2)"></div>
       </div>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 22px;border-top:1px solid var(--border)">
@@ -2487,6 +2525,7 @@ function renderItems(){
         <div class="td-actions">
           <button class="btn btn-ghost btn-sm" onclick="showQR('${i.id}')" title="QR-kode">⊞</button>
           ${sesuUrl ? `<button class="btn btn-ghost btn-sm" onclick="showSesuQR('${encodeURIComponent(sesuUrl)}','${esc(i.name)}')" title="sesu.dk QR-kode" style="font-size:11px;padding:2px 5px">🏪</button>` : ''}
+          <button class="btn btn-ghost btn-sm" onclick="openGrafModal('${i.id}')" title="Forbrudsgraf">📈</button>
           <button class="btn btn-ghost btn-sm" onclick="openItemModal('${i.id}',null)">Rediger</button>
           <button class="btn btn-danger btn-sm" onclick="delItem('${i.id}')">Slet</button>
         </div>
@@ -3494,6 +3533,132 @@ let sesuImages = {}; // sku → sesu.dk product image URL
 let sesuProducts = []; // [{sku, price, name}] sorted by name
 let sesuPricesLoaded = false;
 
+
+// ── LEVERINGSKALENDER ──
+let kalYear=new Date().getFullYear(), kalMonth=new Date().getMonth();
+let poView='liste';
+
+function setPOView(v){
+  poView=v;
+  document.getElementById('po-list-view').style.display=v==='liste'?'':'none';
+  document.getElementById('po-kalender-view').style.display=v==='kalender'?'':'none';
+  document.getElementById('po-view-list').style.fontWeight=v==='liste'?'700':'400';
+  document.getElementById('po-view-kal').style.fontWeight=v==='kalender'?'700':'400';
+  if(v==='kalender') renderKalender();
+}
+
+function moveKal(dir){ kalMonth+=dir; if(kalMonth>11){kalMonth=0;kalYear++;} if(kalMonth<0){kalMonth=11;kalYear--;} renderKalender(); }
+
+function renderKalender(){
+  const titEl=document.getElementById('kal-titel'), gridEl=document.getElementById('kal-grid');
+  if(!titEl||!gridEl) return;
+  const monthNames=['Januar','Februar','Marts','April','Maj','Juni','Juli','August','September','Oktober','November','December'];
+  titEl.textContent=monthNames[kalMonth]+' '+kalYear;
+
+  const today=new Date().toISOString().slice(0,10);
+  // Byg events: PO expected_date
+  const events={};
+  allPO.forEach(po=>{
+    if(!po.expected_date||po.status==='lukket') return;
+    if(!events[po.expected_date]) events[po.expected_date]=[];
+    const isLate=po.expected_date<today&&po.status==='åben';
+    events[po.expected_date].push({type:isLate?'red':'blue',label:po.supplier_name||po.id.slice(-4),id:po.id});
+  });
+  // Bestil-senest events fra items
+  if(histLoaded) items.forEach(i=>{
+    const lead=parseInt(i.leadDays||0); if(!lead) return;
+    const dd=daekningsdage(i.id); if(dd===null||dd===Infinity) return;
+    const bestilOm=Math.round(dd-lead); if(bestilOm<0||bestilOm>60) return;
+    const d=new Date(); d.setDate(d.getDate()+bestilOm);
+    const key=d.toISOString().slice(0,10);
+    if(!events[key]) events[key]=[];
+    events[key].push({type:'amber',label:i.name.slice(0,18)});
+  });
+
+  const firstDay=new Date(kalYear,kalMonth,1);
+  const daysInMonth=new Date(kalYear,kalMonth+1,0).getDate();
+  let startDow=(firstDay.getDay()+6)%7; // Mon=0
+
+  const dayNames=['Man','Tir','Ons','Tor','Fre','Lør','Søn'];
+  let html=`<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+    ${dayNames.map(d=>`<div style="text-align:center;font-size:11px;font-weight:700;color:var(--ink-3);padding:6px 0">${d}</div>`).join('')}`;
+
+  for(let blank=0;blank<startDow;blank++) html+=`<div></div>`;
+  for(let day=1;day<=daysInMonth;day++){
+    const key=`${kalYear}-${String(kalMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const isToday=key===today;
+    const dayEvents=events[key]||[];
+    const dots=dayEvents.map(ev=>`<div style="font-size:9px;padding:1px 4px;border-radius:3px;background:${ev.type==='blue'?'var(--blue)':ev.type==='red'?'var(--red)':'var(--amber)'};color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;max-width:100%" title="${ev.label}">${ev.label}</div>`).join('');
+    html+=`<div style="min-height:72px;border:1px solid var(--border);border-radius:6px;padding:4px;background:${isToday?'var(--blue-dim)':dayEvents.length?'var(--surface-2)':'var(--white)'}">
+      <div style="font-size:11px;font-weight:${isToday?'700':'400'};color:${isToday?'var(--blue)':'var(--ink-3)'};margin-bottom:3px">${day}</div>
+      <div style="display:flex;flex-direction:column;gap:2px;overflow:hidden">${dots}</div>
+    </div>`;
+  }
+  html+=`</div>`;
+  gridEl.innerHTML=html;
+}
+
+// ── FORBRUDSGRAF ──
+let grafChart=null;
+
+function openGrafModal(itemId){
+  if(!histLoaded||!histEntries.length){ toast('Åbn Historik-fanen først for at hente data'); return; }
+  const item=items.find(i=>i.id===itemId); if(!item) return;
+  document.getElementById('graf-modal-title').textContent='Forbrug — '+item.name;
+
+  // Byg 12 måneder bagud
+  const months=[]; const now=new Date();
+  for(let i=11;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    months.push({key:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`,label:['Jan','Feb','Mar','Apr','Maj','Jun','Jul','Aug','Sep','Okt','Nov','Dec'][d.getMonth()]+(i===0?'':d.getMonth()===0?' '+d.getFullYear():'')});
+  }
+
+  // Forbrug = negative ændringer (qty fald), modtagelse = positive
+  const consumed={}; const received={};
+  months.forEach(m=>{consumed[m.key]=0;received[m.key]=0;});
+  histEntries.filter(e=>e.item_id===itemId).forEach(e=>{
+    const mKey=(e.ts||'').slice(0,7); if(!consumed[mKey]&&consumed[mKey]!==0) return;
+    const delta=parseInt(e.to_qty||0)-parseInt(e.from_qty||0);
+    if(delta<0) consumed[mKey]+=Math.abs(delta);
+    else if(delta>0) received[mKey]+=delta;
+  });
+
+  const labels=months.map(m=>m.label);
+  const consumedData=months.map(m=>consumed[m.key]||0);
+  const receivedData=months.map(m=>received[m.key]||0);
+  const totalConsumed=consumedData.reduce((a,b)=>a+b,0);
+  const avgMonthly=totalConsumed?Math.round(totalConsumed/12):0;
+
+  document.getElementById('graf-stats').innerHTML=`
+    <div style="text-align:center"><div style="font-size:11px;color:var(--ink-3)">Forbrug 12 mdr.</div><div style="font-size:18px;font-weight:700">${totalConsumed} stk</div></div>
+    <div style="text-align:center"><div style="font-size:11px;color:var(--ink-3)">Gns. per måned</div><div style="font-size:18px;font-weight:700">${avgMonthly} stk</div></div>
+    <div style="text-align:center"><div style="font-size:11px;color:var(--ink-3)">Nuværende lager</div><div style="font-size:18px;font-weight:700;color:${parseInt(item.qty||0)<parseInt(item.minQty||0)?'var(--red)':'var(--green)'}">${item.qty} stk</div></div>
+    ${avgMonthly?`<div style="text-align:center"><div style="font-size:11px;color:var(--ink-3)">Lager dækker</div><div style="font-size:18px;font-weight:700">${Math.round(parseInt(item.qty||0)/avgMonthly)} mdr.</div></div>`:''}`;
+
+  if(grafChart) grafChart.destroy();
+  const isDark=document.body.classList.contains('dark');
+  const ctx=document.getElementById('graf-canvas').getContext('2d');
+  grafChart=new Chart(ctx,{type:'bar',data:{labels,datasets:[
+    {label:'Forbrug',data:consumedData,backgroundColor:'rgba(184,32,32,.7)',borderRadius:4},
+    {label:'Modtaget',data:receivedData,backgroundColor:'rgba(26,115,232,.5)',borderRadius:4}
+  ]},options:{responsive:true,plugins:{legend:{position:'top'}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,ticks:{stepSize:1}}}}});
+
+  document.getElementById('graf-modal-overlay').style.display='flex';
+}
+function closeGrafModal(){ document.getElementById('graf-modal-overlay').style.display='none'; if(grafChart){grafChart.destroy();grafChart=null;} }
+
+// ── SALGSORDRE TOTALPRIS ──
+function updateSOTotal(){
+  const rows=[...document.getElementById('so-lines').querySelectorAll('div')];
+  let total=0;
+  rows.forEach(row=>{
+    const qty=parseInt(row.querySelector('input[type="number"]')?.value||0);
+    const price=parseFloat(row.querySelectorAll('input')[1]?.value||0);
+    total+=qty*price;
+  });
+  const el=document.getElementById('so-total');
+  if(el) el.innerHTML=total>0?`<span>Total: <strong style="font-family:'IBM Plex Mono',monospace">${total.toLocaleString('da-DK',{minimumFractionDigits:2,maximumFractionDigits:2})} kr.</strong> ekskl. moms</span>`:'';
+}
 
 // ── STATISKE FRAGTPRISER ──
 const STATIC_PRICES = [
@@ -5423,6 +5588,7 @@ const PO_STATUS={åben:{label:'Åben',cls:'badge-blue'},delvist:{label:'Delvist'
 function renderIndkoebsordrer(){
   const tbody=document.getElementById('po-tbody');
   if(!tbody) return;
+  if(poView==='kalender') renderKalender();
   const statsEl=document.getElementById('po-stats');
 
   const aaben=allPO.filter(p=>p.status==='åben');
@@ -6617,18 +6783,21 @@ function renderSO(){
   if(!allSO.length){ tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--ink-3)">Ingen salgsordrer endnu — opret din første med + knappen</td></tr>'; return; }
   const statusBadge={ny:'badge-blue',pluk:'badge-amber',pakket:'badge-green',afsendt:'badge-gray'};
   const statusLabel={ny:'Ny',pluk:'Under pluk',pakket:'Pakket',afsendt:'Afsendt'};
-  tbody.innerHTML=[...allSO].reverse().map(so=>`<tr>
+  tbody.innerHTML=[...allSO].reverse().map(so=>{
+    const total=(so.lines||[]).reduce((s,l)=>s+(l.qty||0)*(l.salePrice||0),0);
+    return `<tr>
     <td><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600">${esc(so.id)}</span></td>
     <td><div class="td-name">${esc(so.customer||'—')}</div>${so.note?`<div class="td-sub">${esc(so.note.slice(0,50))}</div>`:''}</td>
     <td style="font-size:12px;color:var(--ink-2)">${so.date||'—'}</td>
-    <td style="font-family:'IBM Plex Mono',monospace;font-size:12px">${so.lines?.length||0}</td>
+    <td style="font-family:'IBM Plex Mono',monospace;font-size:12px">${so.lines?.length||0} linjer</td>
+    <td style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600">${total>0?total.toLocaleString('da-DK',{minimumFractionDigits:2,maximumFractionDigits:2})+' kr.':'—'}</td>
     <td><span class="badge ${statusBadge[so.status]||'badge-gray'}">${statusLabel[so.status]||so.status}</span></td>
     <td style="text-align:right">
       <button class="btn btn-ghost btn-sm" onclick="openSOPickList('${so.id}')">📋 Plukliste</button>
       <button class="btn btn-ghost btn-sm" onclick="openSOModal('${so.id}')">Rediger</button>
       <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteSO('${so.id}')">Slet</button>
     </td>
-  </tr>`).join('');
+  </tr>`;}).join('');
 }
 
 function openSOModal(id){
@@ -6642,21 +6811,25 @@ function openSOModal(id){
   document.getElementById('so-note').value=so?.note||'';
   const linesEl=document.getElementById('so-lines');
   linesEl.innerHTML='';
-  (so?.lines||[]).forEach(l=>appendSOLine(l.itemId,l.name,l.qty));
-  if(!so?.lines?.length) appendSOLine('','',1);
+  (so?.lines||[]).forEach(l=>appendSOLine(l.itemId,l.name,l.qty,l.salePrice||''));
+  if(!so?.lines?.length) appendSOLine('','',1,'');
   const ov=document.getElementById('so-modal-overlay'); ov.style.display='flex';
 }
 function closeSOModal(){ document.getElementById('so-modal-overlay').style.display='none'; }
 
-function appendSOLine(itemId='',name='',qty=1){
+function appendSOLine(itemId='',name='',qty=1,salePrice=''){
   const linesEl=document.getElementById('so-lines');
   const row=document.createElement('div');
-  row.style.cssText='display:grid;grid-template-columns:1fr 80px 32px;gap:6px;align-items:center';
+  row.style.cssText='display:grid;grid-template-columns:1fr 80px 90px 32px;gap:6px;align-items:center';
   const opts=items.map(i=>`<option value="${i.id}" ${i.id===itemId?'selected':''}>${esc(i.name)}${i.sku?' ('+i.sku+')':''}</option>`).join('');
-  row.innerHTML=`<select style="padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit"><option value="">— Vælg vare —</option>${opts}</select>
-    <input type="number" min="1" value="${qty}" style="padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit">
-    <button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--ink-3);line-height:1">×</button>`;
+  // Try to pre-fill salePrice from sesu.dk match
+  const autoPrice=salePrice||( ()=>{ if(!itemId) return ''; const it=items.find(i=>i.id===itemId); if(!it) return ''; const m=findSesuPrice&&findSesuPrice(it.name,it.sku); return m?m.price:''; })();
+  row.innerHTML=`<select onchange="const it=items.find(i=>i.id===this.value);if(it){const m=findSesuPrice&&findSesuPrice(it.name,it.sku);if(m)this.parentElement.querySelectorAll('input')[1].value=m.price;}updateSOTotal()" style="padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit"><option value="">— Vælg vare —</option>${opts}</select>
+    <input type="number" min="1" value="${qty}" oninput="updateSOTotal()" style="padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit">
+    <input type="number" min="0" step="0.01" value="${autoPrice}" placeholder="Pris" oninput="updateSOTotal()" style="padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit">
+    <button onclick="this.parentElement.remove();updateSOTotal()" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--ink-3);line-height:1">×</button>`;
   linesEl.appendChild(row);
+  updateSOTotal();
 }
 function addSOLine(){ appendSOLine('','',1); }
 
@@ -6665,10 +6838,10 @@ function saveSOModal(){
   const customer=document.getElementById('so-customer').value.trim();
   if(!customer){ toast('Udfyld kundenavn'); return; }
   const lines=[...document.getElementById('so-lines').querySelectorAll('div')].map(row=>{
-    const sel=row.querySelector('select'); const inp=row.querySelector('input[type="number"]');
+    const sel=row.querySelector('select'); const inps=row.querySelectorAll('input[type="number"]');
     if(!sel||!sel.value) return null;
     const item=items.find(i=>i.id===sel.value);
-    return {itemId:sel.value,name:item?.name||sel.options[sel.selectedIndex]?.text||'',qty:parseInt(inp?.value||1)};
+    return {itemId:sel.value,name:item?.name||sel.options[sel.selectedIndex]?.text||'',qty:parseInt(inps[0]?.value||1),salePrice:parseFloat(inps[1]?.value||0)||0};
   }).filter(Boolean);
   loadSO();
   if(id){
