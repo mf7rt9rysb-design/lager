@@ -2063,7 +2063,7 @@ function renderShipments(ships){
         : `<span style="color:var(--ink-3);font-size:12px">${esc(s.product_code||'—')}</span>`
       }</td>
       <td style="font-size:12px;color:var(--ink-3)">${esc(s.reference||'—')}</td>
-      <td style="${stateClass==='delivered'?'background:#E2F0E2;border-radius:6px;':''}">
+      <td style="${{delivered:'background:#E2F0E2;',transit:'background:#FFF0D4;',returned:'background:#FCEBEB;'}[stateClass]||''}border-radius:6px;">
         <div style="font-size:11px;font-family:'IBM Plex Mono',monospace;color:${trackColor};font-weight:${stateClass==='created'?'400':'600'}">${esc(tracking)}</div>
         ${trackUrl ? `<a href="${trackUrl}" target="_blank" rel="noopener" class="tracking-link" style="font-size:11px">↗ Spor pakke</a>` : ''}
       </td>
