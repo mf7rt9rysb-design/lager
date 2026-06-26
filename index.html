@@ -890,17 +890,38 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
   .ai-panel.open { transform: translateY(0); }
 }
 @media (max-width: 600px) {
-  .content { padding: 12px; }
-  .topbar { padding: 12px 16px; }
+  .content { padding: 10px; }
+  .topbar { padding: 10px 14px; }
+  .topbar .page-title { font-size: 15px; }
+  .topbar .page-sub { display: none; }
   .stats-grid { grid-template-columns: repeat(2,1fr); gap: 8px; }
-  .stat-card { padding: 14px; }
-  .stat-value { font-size: 22px; }
+  .stat-card { padding: 12px 14px; }
+  .stat-value { font-size: 20px; }
   .form-row { grid-template-columns: 1fr; }
-  table { font-size: 12px; }
-  thead th { padding: 6px 10px; font-size: 10px; }
-  tbody td { padding: 8px 10px; }
+  /* Tables: scroll horizontally, hide less-important cols */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { font-size: 12px; min-width: 420px; }
+  thead th { padding: 6px 8px; font-size: 10px; }
+  tbody td { padding: 7px 8px; }
   .td-actions { gap: 4px; }
+  .td-actions .btn { padding: 4px 8px; font-size: 11px; }
+  /* Hide low-priority columns on small screens */
+  .hide-sm { display: none !important; }
+  /* Search/filter bar: wrap to two lines */
+  .search-filter { flex-wrap: wrap; gap: 6px; }
+  .search-filter .btn { font-size: 11px; padding: 5px 8px; }
+  .search-input-wrap { min-width: 0; flex: 1 1 180px; }
+  .filter-chips { order: 10; width: 100%; }
+  /* Bigger touch targets */
+  .btn { min-height: 36px; }
+  .btn-sm { min-height: 30px; }
+  /* Room grid */
   .room-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  /* Low-stock side-by-side → stack on mobile */
+  #tab-oversigt > div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+  /* Oversigt stat grid full-width */
+  #stats-grid { grid-template-columns: repeat(2,1fr) !important; }
+  /* Modal slides up from bottom */
   .modal {
     border-radius: 20px 20px 0 0;
     max-height: 92dvh;
@@ -910,6 +931,8 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
     margin: 0;
   }
   .modal-bg.open { align-items: flex-end; padding: 0; }
+  /* Rapporter grid → stack */
+  #rap-content > div[style*="grid-template-columns:1fr 1fr"] { display: flex !important; flex-direction: column !important; }
 }
 
 /* ── SIDEBAR SEARCH ── */
@@ -1342,6 +1365,8 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
           <button class="btn btn-ghost btn-sm" onclick="openScanner()" title="Scan stregkode eller QR-kode">📷 Scan</button>
           <button class="btn btn-ghost btn-sm" onclick="openBatchQR()" title="Print QR-koder for alle varer">🖨 QR-print</button>
           <button class="btn btn-ghost btn-sm" onclick="exportVarerCSV()" title="Eksporter vareliste til CSV">⬇ CSV</button>
+          <button class="btn btn-ghost btn-sm" onclick="openImportModal()" title="Importer varer fra CSV">⬆ Importer</button>
+          <button class="btn btn-ghost btn-sm" onclick="openCatModal()" title="Rediger kategorier">⚙ Kategorier</button>
           <button class="btn btn-ghost btn-sm" id="sesu-btn" onclick="loadSesuPrices()" title="Hent aktuelle priser fra sesu.dk" style="white-space:nowrap">⟳ sesu.dk priser <span id="sesu-status" style="font-size:10px;color:var(--ink-3)"></span></button>
         </div>
         <div class="bulk-bar" id="bulk-bar">
@@ -1357,12 +1382,12 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
               <thead><tr>
                 <th style="width:3%"><input type="checkbox" id="check-all" onchange="toggleAllCheck(this)" class="row-check"></th>
                 <th style="width:22%">Varenavn</th>
-                <th style="width:11%">Kategori</th>
-                <th style="width:17%">Placering</th>
+                <th style="width:11%" class="hide-sm">Kategori</th>
+                <th style="width:17%" class="hide-sm">Placering</th>
                 <th style="width:7%">Antal</th>
                 <th style="width:7%">Min.</th>
-                <th style="width:10%">Pris (sesu.dk)</th>
-                <th style="width:11%">Lagerværdi</th>
+                <th style="width:10%" class="hide-sm">Pris (sesu.dk)</th>
+                <th style="width:11%" class="hide-sm">Lagerværdi</th>
                 <th style="width:12%"></th>
               </tr></thead>
               <tbody id="items-tbody"></tbody>
@@ -1492,6 +1517,7 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">
           <div style="font-size:13px;color:var(--ink-3)">Varer under minimumsbeholdning — klar til genbestilling</div>
           <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="openOrderHistory()">📜 Historik</button>
             <button class="btn btn-ghost btn-sm" onclick="openGenbestilling()">📧 Send ordre</button>
             <button class="btn btn-ghost btn-sm" onclick="copyShoppingList()">📋 Kopier liste</button>
             <button class="btn btn-ghost btn-sm" onclick="window.print()">🖨 Print</button>
@@ -1646,8 +1672,9 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
 
 <script>
 const API = 'https://script.google.com/macros/s/AKfycbwdbhEo-na7UVPQ4raRAz22NhVxFzE8YvdyK1u06iTTKd4PDbdlQLU1jgHjhubgIUYZjw/exec';
-const CATS = ['Bordben','Beslag','Hyldeplader','Skruer & bolte','Møbelben','Hjul & gliders','Andet'];
-const BADGE = { Bordben:'badge-blue', Beslag:'badge-green', Hyldeplader:'badge-amber', 'Skruer & bolte':'badge-gray', Møbelben:'badge-blue', 'Hjul & gliders':'badge-green', Andet:'badge-gray' };
+let CATS = JSON.parse(localStorage.getItem('lager_cats')||'null') || ['Bordben','Beslag','Hyldeplader','Skruer & bolte','Møbelben','Hjul & gliders','Andet'];
+const BADGE_POOL = ['badge-blue','badge-green','badge-amber','badge-gray','badge-blue','badge-green','badge-amber'];
+function getBadgeClass(cat){ const i=CATS.indexOf(cat); return i>=0?BADGE_POOL[i%BADGE_POOL.length]:'badge-gray'; }
 const TITLES = { oversigt:'Oversigt', varer:'Alle varer', rum:'Rum & zoner', forsendelser:'Forsendelser', priser:'Fragtpriser', indkob:'Indkøbsliste', historik:'Historik', optaelling:'Lageroptælling', modtagelse:'Varemodtagelse', leverandoerer:'Leverandører', rapporter:'Rapporter' };
 
 let items=[], rooms=[], selRoom=null, activeCat='Alle';
@@ -1830,7 +1857,7 @@ function jsonpShipSlow(params){
   });
 }
 
-function catBadge(cat){ return `<span class="badge ${BADGE[cat]||'badge-gray'}">${esc(cat)}</span>`; }
+function catBadge(cat){ return `<span class="badge ${getBadgeClass(cat)}">${esc(cat)}</span>`; }
 function esc(s){ const d=document.createElement('div'); d.textContent=String(s??''); return d.innerHTML; }
 
 function renderOverview(){
@@ -3404,6 +3431,7 @@ function openPickList(shipId){
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="window.print()">🖨 Print</button>
+      <button class="btn btn-ghost" id="pick-finish-btn" onclick="finishPickList('${sid}',${JSON.stringify(sorted)})" style="display:none">✓ Afslut pluk — træk fra lager</button>
       <button class="btn btn-primary" onclick="closeModal()">Luk</button>
     </div>`;
   openModal();
@@ -3411,9 +3439,33 @@ function openPickList(shipId){
 
 function checkPickDone(sid){
   const boxes=[...document.querySelectorAll('[id^="pluk-"]')];
-  if(boxes.length && boxes.every(b=>b.checked)){
-    const banner=document.getElementById('pick-done-banner');
-    if(banner) banner.style.display='block';
+  const allDone=boxes.length && boxes.every(b=>b.checked);
+  const banner=document.getElementById('pick-done-banner');
+  const finBtn=document.getElementById('pick-finish-btn');
+  if(banner) banner.style.display=allDone?'block':'none';
+  if(finBtn) finBtn.style.display=allDone?'inline-flex':'none';
+}
+
+async function finishPickList(sid, pickedItems){
+  if(!confirm('Træk plukkede antal fra lagerbeholdningen?')) return;
+  const btn=document.getElementById('pick-finish-btn');
+  if(btn){ btn.disabled=true; btn.textContent='Gemmer…'; }
+  sync('load','Opdaterer lager fra plukkeliste…');
+  try {
+    await Promise.all(pickedItems.map(async e=>{
+      const it=items.find(i=>i.id===e.id); if(!it) return;
+      const orig=parseInt(it.qty||0);
+      const newQty=Math.max(0, orig-e.qty);
+      await jsonp({...it, action:'saveItem', qty:newQty});
+      jsonp({action:'logMovement',item_id:it.id,item_name:it.name,from_qty:orig,to_qty:newQty,note:'Pluk (forsendelse '+sid+')'}).catch(()=>{});
+    }));
+    histLoaded=false;
+    closeModal();
+    toast('Lager opdateret fra plukkeliste');
+    await loadAll();
+  } catch(e){
+    sync('err','Fejl'); toast('Fejl: '+e.message);
+    if(btn){ btn.disabled=false; btn.textContent='✓ Afslut pluk — træk fra lager'; }
   }
 }
 
@@ -3953,9 +4005,251 @@ function sendOrderMail(){
   const email = document.getElementById('order-email')?.value||'';
   const subject = document.getElementById('order-subject')?.value||'Genbestilling';
   const body = document.getElementById('order-body')?.value||'';
+  // Log to history before opening mail
+  const low = items.filter(i=>parseInt(i.qty||0)<parseInt(i.minQty||0));
+  const hist = JSON.parse(localStorage.getItem('lager_order_hist')||'[]');
+  hist.unshift({ ts:new Date().toISOString(), email, subject,
+    lines: low.map(i=>({ name:i.name, sku:i.sku, need:parseInt(i.minQty||0)-parseInt(i.qty||0) })) });
+  localStorage.setItem('lager_order_hist', JSON.stringify(hist.slice(0,50)));
   const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   window.location.href = mailto;
   closeModal();
+}
+
+// ── GENBESTILLINGSHISTORIK ──
+function openOrderHistory(){
+  const hist = JSON.parse(localStorage.getItem('lager_order_hist')||'[]');
+  document.getElementById('modal-box').innerHTML=`
+    <div class="modal-head">
+      <div class="modal-title">📜 Ordrehistorik</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      ${!hist.length ? '<div style="padding:20px;font-size:13px;color:var(--ink-3);text-align:center">Ingen ordrer sendt endnu</div>' :
+        hist.map((h,i)=>{
+          let ts=''; try{ ts=new Date(h.ts).toLocaleDateString('da-DK',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(x){}
+          return `<div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+              <div>
+                <div style="font-size:13px;font-weight:600">${esc(h.subject)}</div>
+                <div style="font-size:11px;color:var(--ink-3);margin-top:2px">${esc(ts)} · til ${esc(h.email||'—')}</div>
+              </div>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-ghost btn-sm" onclick="deleteOrderHist(${i})">Slet</button>
+              </div>
+            </div>
+            <div style="margin-top:8px;font-size:12px;color:var(--ink-2)">
+              ${h.lines.slice(0,5).map(l=>`<div style="padding:2px 0">${esc(l.name)}${l.sku?` <span style="color:var(--ink-3)">${esc(l.sku)}</span>`:''} — <strong>${l.need} stk</strong></div>`).join('')}
+              ${h.lines.length>5?`<div style="color:var(--ink-3);font-size:11px">+${h.lines.length-5} mere…</div>`:''}
+            </div>
+          </div>`;
+        }).join('')
+      }
+    </div>
+    <div class="modal-foot">
+      ${hist.length?`<button class="btn btn-ghost btn-sm" onclick="if(confirm('Ryd al ordrehistorik?')){localStorage.removeItem('lager_order_hist');closeModal();}">Ryd historik</button>`:''}
+      <button class="btn btn-primary" onclick="closeModal()">Luk</button>
+    </div>`;
+  openModal();
+}
+
+function deleteOrderHist(idx){
+  const hist=JSON.parse(localStorage.getItem('lager_order_hist')||'[]');
+  hist.splice(idx,1);
+  localStorage.setItem('lager_order_hist',JSON.stringify(hist));
+  openOrderHistory();
+}
+
+// ── TILPASSEDE KATEGORIER ──
+function openCatModal(){
+  const renderList=()=>{
+    document.getElementById('modal-box').innerHTML=`
+      <div class="modal-head">
+        <div class="modal-title">⚙ Rediger kategorier</div>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size:12px;color:var(--ink-3);margin-bottom:12px">Kategorier bruges til at filtrere og sortere varer. Ændringer påvirker kun nye valg — eksisterende varer beholder deres kategori.</div>
+        <div id="cat-list" style="margin-bottom:16px">
+          ${CATS.map((c,i)=>`
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-light)">
+              <span style="flex:1;font-size:13px">${esc(c)} ${catBadge(c)}</span>
+              ${CATS.length>1?`<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="removeCat(${i})">Slet</button>`:''}
+            </div>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px">
+          <input id="new-cat-inp" placeholder="Ny kategori…" style="flex:1;border:1.5px solid var(--border);border-radius:var(--radius);padding:8px 12px;font-size:13px" onkeydown="if(event.key==='Enter')addCat()">
+          <button class="btn btn-primary btn-sm" onclick="addCat()">+ Tilføj</button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost btn-sm" onclick="resetCats()">Nulstil til standard</button>
+        <button class="btn btn-primary" onclick="closeModal()">Færdig</button>
+      </div>`;
+  };
+  renderList();
+  openModal();
+}
+
+function addCat(){
+  const inp=document.getElementById('new-cat-inp');
+  const name=(inp?.value||'').trim();
+  if(!name){ toast('Angiv et navn'); return; }
+  if(CATS.includes(name)){ toast('Kategorien findes allerede'); return; }
+  CATS.push(name);
+  localStorage.setItem('lager_cats',JSON.stringify(CATS));
+  openCatModal();
+}
+
+function removeCat(idx){
+  const inUse=items.filter(i=>i.cat===CATS[idx]).length;
+  if(inUse&&!confirm(`${inUse} vare${inUse===1?'':'r'} bruger denne kategori. Slet alligevel?`)) return;
+  CATS.splice(idx,1);
+  localStorage.setItem('lager_cats',JSON.stringify(CATS));
+  openCatModal();
+  renderItems();
+}
+
+function resetCats(){
+  if(!confirm('Nulstil kategorier til standard?')) return;
+  CATS=['Bordben','Beslag','Hyldeplader','Skruer & bolte','Møbelben','Hjul & gliders','Andet'];
+  localStorage.removeItem('lager_cats');
+  openCatModal();
+  renderItems();
+}
+
+// ── CSV IMPORT ──
+function openImportModal(){
+  document.getElementById('modal-box').innerHTML=`
+    <div class="modal-head">
+      <div class="modal-title">⬆ Importer varer fra CSV</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--surface-2);border-radius:var(--radius);padding:14px 16px;font-size:12px;color:var(--ink-2);margin-bottom:16px;line-height:1.7">
+        <strong>Forventet kolonnerækkefølge (fra vores CSV-eksport):</strong><br>
+        ID · Navn · Kategori · Rum · Hylde · Antal · Min.antal · SKU · Note · Oprettet · Leveringstid · Leverandør<br>
+        <span style="color:var(--ink-3)">Første linje bruges som header og springes over. Kun "Navn" er påkrævet.</span>
+      </div>
+      <div style="border:2px dashed var(--border);border-radius:var(--radius);padding:24px;text-align:center;cursor:pointer" onclick="document.getElementById('csv-file-inp').click()" ondragover="event.preventDefault()" ondrop="event.preventDefault();handleImportFile(event.dataTransfer.files[0])">
+        <div style="font-size:24px;margin-bottom:8px">📄</div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:4px">Klik eller træk CSV-fil herhen</div>
+        <div style="font-size:11px;color:var(--ink-3)">Understøtter .csv filer</div>
+      </div>
+      <input id="csv-file-inp" type="file" accept=".csv,text/csv" style="display:none" onchange="handleImportFile(this.files[0])">
+      <div id="import-preview" style="margin-top:16px"></div>
+    </div>
+    <div class="modal-foot" id="import-foot">
+      <button class="btn" onclick="closeModal()">Annuller</button>
+    </div>`;
+  openModal();
+}
+
+function handleImportFile(file){
+  if(!file){ return; }
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const text=e.target.result;
+    const rows=parseCSVText(text);
+    if(rows.length<2){ document.getElementById('import-preview').innerHTML='<div style="color:var(--red);font-size:13px">Filen ser tom ud eller har ugyldigt format</div>'; return; }
+    const headers=rows[0].map(h=>h.toLowerCase().trim());
+    const dataRows=rows.slice(1).filter(r=>r.some(c=>c.trim()));
+    // Map columns flexibly
+    const col=n=>{ const i=headers.indexOf(n); return i>=0?i:-1; };
+    const idIdx=col('id'), nameIdx=col('navn')>=0?col('navn'):col('name')>=0?col('name'):1;
+    const catIdx=col('kategori')>=0?col('kategori'):col('category')>=0?col('category'):2;
+    const shelfIdx=col('hylde')>=0?col('hylde'):col('shelf')>=0?col('shelf'):4;
+    const qtyIdx=col('antal')>=0?col('antal'):col('qty')>=0?col('qty'):5;
+    const minIdx=col('min.antal')>=0?col('min.antal'):col('minqty')>=0?col('minqty'):6;
+    const skuIdx=col('sku')>=0?col('sku'):7;
+    const noteIdx=col('note')>=0?col('note'):8;
+    const leadIdx=col('leveringstid (dage)')>=0?col('leveringstid (dage)'):col('leaddays')>=0?col('leaddays'):10;
+
+    const parsed=dataRows.map(r=>({
+      id: idIdx>=0&&r[idIdx]?r[idIdx].trim():'',
+      name: r[nameIdx]?.trim()||'',
+      cat: catIdx>=0?r[catIdx]?.trim()||'':'',
+      shelf: shelfIdx>=0?r[shelfIdx]?.trim()||'':'',
+      qty: qtyIdx>=0?r[qtyIdx]?.trim()||'0':'0',
+      minQty: minIdx>=0?r[minIdx]?.trim()||'0':'0',
+      sku: skuIdx>=0?r[skuIdx]?.trim()||'':'',
+      note: noteIdx>=0?r[noteIdx]?.trim()||'':'',
+      leadDays: leadIdx>=0?r[leadIdx]?.trim()||'':'',
+    })).filter(r=>r.name);
+
+    if(!parsed.length){ document.getElementById('import-preview').innerHTML='<div style="color:var(--red);font-size:13px">Ingen gyldige rækker fundet — tjek at filen har en "Navn"-kolonne</div>'; return; }
+
+    const existing=parsed.filter(r=>r.id&&items.find(i=>i.id===r.id));
+    const fresh=parsed.filter(r=>!r.id||!items.find(i=>i.id===r.id));
+
+    document.getElementById('import-preview').innerHTML=`
+      <div style="font-size:12px;color:var(--ink-3);margin-bottom:8px">${parsed.length} rækker fundet · ${fresh.length} nye · ${existing.length} opdateringer</div>
+      <div class="table-wrap" style="max-height:220px;overflow-y:auto"><table>
+        <thead><tr><th>Navn</th><th>Kat.</th><th>Antal</th><th>SKU</th><th style="width:8%">Type</th></tr></thead>
+        <tbody>${parsed.slice(0,20).map(r=>{
+          const isUpd=r.id&&items.find(i=>i.id===r.id);
+          return `<tr>
+            <td><div class="td-name">${esc(r.name)}</div></td>
+            <td>${catBadge(r.cat)}</td>
+            <td style="font-family:'IBM Plex Mono',monospace">${esc(r.qty)}</td>
+            <td style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-3)">${esc(r.sku)}</td>
+            <td><span class="badge ${isUpd?'badge-amber':'badge-green'}">${isUpd?'Opdater':'Ny'}</span></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+      ${parsed.length>20?`<div style="font-size:11px;color:var(--ink-3);margin-top:4px">Viser top 20 af ${parsed.length}</div>`:''}`;
+
+    document.getElementById('import-foot').innerHTML=`
+      <button class="btn" onclick="closeModal()">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmImport(${JSON.stringify(parsed).replace(/</g,'\\u003c')})">Importer ${parsed.length} varer</button>`;
+  };
+  reader.readAsText(file,'UTF-8');
+}
+
+function parseCSVText(text){
+  const rows=[];
+  let cur=[], field='', inQ=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(inQ){
+      if(ch==='"'&&text[i+1]==='"'){ field+='"'; i++; }
+      else if(ch==='"'){ inQ=false; }
+      else { field+=ch; }
+    } else {
+      if(ch==='"'){ inQ=true; }
+      else if(ch===','){ cur.push(field); field=''; }
+      else if(ch==='\n'||ch==='\r'){
+        cur.push(field); field='';
+        if(cur.some(c=>c)){ rows.push(cur); }
+        cur=[];
+        if(ch==='\r'&&text[i+1]==='\n') i++;
+      } else { field+=ch; }
+    }
+  }
+  if(field||cur.length){ cur.push(field); if(cur.some(c=>c)) rows.push(cur); }
+  return rows;
+}
+
+async function confirmImport(parsed){
+  const btn=document.querySelector('#import-foot .btn-primary');
+  if(btn){ btn.disabled=true; btn.textContent='Importerer…'; }
+  sync('load',`Importerer ${parsed.length} varer…`);
+  let ok=0, fail=0;
+  for(const r of parsed){
+    try{
+      const existing=r.id?items.find(i=>i.id===r.id):null;
+      const payload={ action:'saveItem',
+        id:r.id||'', name:r.name, cat:r.cat, shelf:r.shelf,
+        qty:r.qty, minQty:r.minQty, sku:r.sku, note:r.note, leadDays:r.leadDays,
+        room:existing?.room||'', supplier:existing?.supplier||'' };
+      await jsonp(payload);
+      ok++;
+    } catch(e){ fail++; }
+  }
+  histLoaded=false;
+  closeModal();
+  toast(`${ok} varer importeret${fail?` · ${fail} fejlede`:''}`, fail?4000:2000);
+  await loadAll();
 }
 
 // ── CSV EKSPORT ──
