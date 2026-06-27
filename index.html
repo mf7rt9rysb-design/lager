@@ -3404,6 +3404,16 @@ async function openNewShipmentModal(){
         <div class="fg"><label>Reference</label><input id="sh-ref" placeholder="Ordre nr."></div>
         <div class="fg"><label>Label format</label><select id="sh-fmt"><option value="a4_pdf">A4 PDF</option><option value="10x19_pdf">10×19 PDF</option><option value="zpl">ZPL (label printer)</option></select></div>
       </div>
+      <div style="display:flex;gap:18px;margin-top:10px;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="sh-notify-email" checked style="width:15px;height:15px;cursor:pointer">
+          Email-notifikation til modtager
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="sh-notify-sms" checked style="width:15px;height:15px;cursor:pointer">
+          SMS-notifikation til modtager
+        </label>
+      </div>
 
     </div>
     <div class="modal-foot">
@@ -3475,6 +3485,10 @@ async function submitShipment(){
     weight_grams:  document.getElementById('sh-weight').value,
     reference:     document.getElementById('sh-ref').value.trim(),
     label_format:  document.getElementById('sh-fmt').value,
+    service_codes: [
+      document.getElementById('sh-notify-email')?.checked ? 'EMAIL_NT' : '',
+      document.getElementById('sh-notify-sms')?.checked   ? 'SMS_NT'   : ''
+    ].filter(Boolean).join(','),
     printer_host:  '',
     printer_name:  '',
     printer_format:''
