@@ -1326,6 +1326,7 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
       <div id="last-login-label" style="margin-top:8px;font-size:10px;color:rgba(255,255,255,.25);line-height:1.4"></div>
       <div style="display:flex;gap:6px;margin-top:8px">
         <button onclick="open2FAModal()" style="flex:1;background:none;border:1px solid rgba(255,255,255,.12);border-radius:var(--radius);padding:7px 10px;color:rgba(255,255,255,.4);font-size:11px;font-weight:500;cursor:pointer;transition:all .15s;text-align:center" onmouseover="this.style.color='rgba(255,255,255,.7)';this.style.borderColor='rgba(255,255,255,.25)'" onmouseout="this.style.color='rgba(255,255,255,.4)';this.style.borderColor='rgba(255,255,255,.12)'" title="Opsæt to-faktor godkendelse">🔐 2FA</button>
+        <button onclick="openApiKeyModal()" style="flex:1;background:none;border:1px solid rgba(255,255,255,.12);border-radius:var(--radius);padding:7px 10px;color:rgba(255,255,255,.4);font-size:11px;font-weight:500;cursor:pointer;transition:all .15s;text-align:center" onmouseover="this.style.color='rgba(255,255,255,.7)';this.style.borderColor='rgba(255,255,255,.25)'" onmouseout="this.style.color='rgba(255,255,255,.4)';this.style.borderColor='rgba(255,255,255,.12)'" title="Sæt Anthropic API-nøgle">✦ AI</button>
         <button onclick="doLogout()" style="flex:2;background:none;border:1px solid rgba(255,255,255,.12);border-radius:var(--radius);padding:7px 12px;color:rgba(255,255,255,.4);font-size:11px;font-weight:500;cursor:pointer;transition:all .15s;text-align:left" onmouseover="this.style.color='rgba(255,255,255,.7)';this.style.borderColor='rgba(255,255,255,.25)'" onmouseout="this.style.color='rgba(255,255,255,.4)';this.style.borderColor='rgba(255,255,255,.12)'">⎋ Log ud</button>
       </div>
     </div>
@@ -4059,6 +4060,46 @@ function backToPassword() {
   document.getElementById('login-input').value = '';
   document.getElementById('login-input').focus();
   document.getElementById('login-err').textContent = '';
+}
+
+// ── ANTHROPIC API-NØGLE ──
+function openApiKeyModal() {
+  document.getElementById('modal-box').innerHTML = `
+    <div class="modal-head">
+      <div class="modal-title">✦ Anthropic API-nøgle</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--ink-2);margin:0 0 14px">Indsæt din Anthropic API-nøgle herunder. Den gemmes direkte i Apps Script og bruges kun til AI-parsing af ordremails.</p>
+      <div class="fg">
+        <label>API-nøgle</label>
+        <input id="apikey-input" type="password" placeholder="sk-ant-api03-…" style="font-family:'IBM Plex Mono',monospace;font-size:12px">
+      </div>
+      <p style="font-size:11px;color:var(--ink-3);margin:8px 0 0">Find din nøgle på <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--blue)">console.anthropic.com/settings/keys</a></p>
+      <div id="apikey-err" style="font-size:12px;color:var(--red);margin-top:8px"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal()">Annuller</button>
+      <button id="apikey-save-btn" class="btn btn-primary" onclick="saveApiKey()">Gem nøgle</button>
+    </div>`;
+  openModal();
+}
+
+async function saveApiKey() {
+  const key = (document.getElementById('apikey-input').value || '').trim();
+  const err = document.getElementById('apikey-err');
+  if (!key.startsWith('sk-ant-')) { err.textContent = 'Nøglen skal starte med sk-ant-…'; return; }
+  const btn = document.getElementById('apikey-save-btn');
+  btn.disabled = true; btn.textContent = 'Gemmer…';
+  try {
+    const res = await jsonpShip({ action: 'setAnthropicKey', key });
+    if (res.error) throw new Error(res.error);
+    closeModal();
+    toast('✦ Anthropic API-nøgle gemt');
+  } catch(e) {
+    err.textContent = 'Fejl: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Gem nøgle';
+  }
 }
 
 // ── 2FA OPSÆTNING ──
