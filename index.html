@@ -3508,6 +3508,14 @@ async function submitShipment(){
     const d = await jsonpShip({...data});
     if(d.error) throw new Error(d.error);
     toast('Forsendelse oprettet ✓');
+    // Sæt automatisk til "Under transport" ved oprettelse
+    if(d.id) {
+      const sid = String(d.id);
+      localStorage.setItem('ship_status_'+sid, 'in_transit');
+      if(!shipPackageContents[sid]) shipPackageContents[sid] = { items: [], status: '' };
+      shipPackageContents[sid].status = 'in_transit';
+      jsonp({ action:'saveShipmentStatus', shipment_id: sid, status: 'in_transit' }).catch(()=>{});
+    }
     const labelUrl = d.label_url || d.pdf_uri;
     if(labelUrl) setTimeout(()=>{
       const win = window.open(labelUrl,'_blank');
