@@ -3278,31 +3278,7 @@ function setShipStatus(shipId, status){
   jsonp({ action:'saveShipmentStatus', shipment_id: sid, status: stored }).catch(()=>{});
 }
 
-let zebraPrinters = [];
-let zebraSDKLoaded = false;
-
-async function detectZebraPrinters() {
-  // Zebra Browser Print kører på https://localhost:9091
-  // Brugeren skal have accepteret det self-signed cert én gang ved at besøge https://localhost:9091
-  return new Promise(resolve => {
-    if(zebraSDKLoaded && window.BrowserPrint) {
-      window.BrowserPrint.getLocalDevices(d => resolve(d.printer || []), () => resolve([]));
-      return;
-    }
-    const s = document.createElement('script');
-    s.src = 'https://localhost:9091/BrowserPrint-Zebra-1.1.250.min.js';
-    s.onload = () => {
-      zebraSDKLoaded = true;
-      if(!window.BrowserPrint) { resolve([]); return; }
-      window.BrowserPrint.getLocalDevices(d => resolve(d.printer || []), () => resolve([]));
-    };
-    s.onerror = () => resolve([]);
-    document.head.appendChild(s);
-  });
-}
-
 async function printLabel(id){
-  // Vis modal med det samme, detekter Zebra i baggrunden
   document.getElementById('modal-box').innerHTML = `
     <div class="modal-head">
       <div class="modal-title">Print label</div>
@@ -3315,35 +3291,19 @@ async function printLabel(id){
           <option value="10x19_pdf">10×19 PDF</option>
         </select>
       </div>
-      <div id="zebra-section">
-        <div id="zebra-status" style="font-size:12px;color:var(--ink-3);padding:8px 0">Søger efter Zebra-printer…</div>
+      <div style="font-size:12px;color:var(--ink-3);margin-top:4px;line-height:1.6">
+        Print-dialogen åbnes automatisk — vælg din Zebra og tryk Enter.
       </div>
     </div>
     <div class="modal-foot">
       <button class="btn" onclick="closeModal()">Annuller</button>
-      <button class="btn" onclick="doPrintLabel(${id},false)">↗ Åbn i browser</button>
-      <button class="btn btn-primary" id="btn-zebra-direct" style="display:none" onclick="doPrintLabel(${id},true)">🖨 Send til Zebra</button>
+      <button class="btn btn-primary" onclick="doPrintLabel(${id})">🖨 Hent &amp; print</button>
     </div>`;
   openModal();
-
-  const printers = await detectZebraPrinters();
-  zebraPrinters = printers;
-  const statusEl = document.getElementById('zebra-status');
-  const zebraBtn = document.getElementById('btn-zebra-direct');
-  if(!statusEl) return;
-
-  if(printers.length) {
-    const opts = printers.map(p=>`<option value="${esc(p.uid)}">${esc(p.name||p.connection||p.uid)}</option>`).join('');
-    statusEl.outerHTML = `<div class="fg" style="margin-top:6px"><label>Zebra-printer</label><select id="zebra-sel">${opts}</select></div>`;
-    if(zebraBtn) zebraBtn.style.display = '';
-  } else {
-    statusEl.innerHTML = `Zebra Browser Print ikke fundet — <a href="https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html" target="_blank" style="color:var(--accent)">download appen</a> for direkte print. Første gang skal du åbne <a href="https://localhost:9091" target="_blank" style="color:var(--accent)">https://localhost:9091</a> og acceptere certifikatet.`;
-  }
 }
 
-async function doPrintLabel(id, useZebra){
+async function doPrintLabel(id){
   const fmt = document.getElementById('pl-fmt')?.value || 'a4_pdf';
-  const zebraUid = document.getElementById('zebra-sel')?.value;
   closeModal();
   toast('Henter label fra Shipmondo…');
   try {
@@ -3351,33 +3311,25 @@ async function doPrintLabel(id, useZebra){
     if(d.error && !d.label_b64) { alert('Fejl: ' + d.error); return; }
     if(!d.label_b64) { alert('Ingen label tilgængelig for denne forsendelse'); return; }
 
-    // base64 → Blob
     const byteChars = atob(d.label_b64);
     const bytes = new Uint8Array(byteChars.length);
     for(let i=0;i<byteChars.length;i++) bytes[i]=byteChars.charCodeAt(i);
-    const pdfBlob = new Blob([bytes], {type:'application/pdf'});
+    const blob = new Blob([bytes], {type:'application/pdf'});
+    const blobUrl = URL.createObjectURL(blob);
 
-    if(useZebra && window.BrowserPrint && zebraPrinters.length) {
-      const printer = zebraPrinters.find(p=>p.uid===zebraUid) || zebraPrinters[0];
-      toast('Sender til ' + (printer.name || 'Zebra') + '…');
-      const file = new File([pdfBlob], 'label.pdf', {type:'application/pdf'});
-      printer.sendFile(file,
-        () => toast('Label sendt til ' + (printer.name || 'Zebra')),
-        err  => alert('Print fejl: ' + (err || 'ukendt fejl'))
-      );
-    } else {
-      // Åbn som blob-URL i ny fane
-      const blobUrl = URL.createObjectURL(pdfBlob);
-      const w = window.open(blobUrl, '_blank');
-      if(!w) {
-        const a = document.createElement('a');
-        a.href = blobUrl; a.download = 'label-'+id+'.pdf'; a.click();
-        toast('Label downloadet som PDF');
-      } else {
-        setTimeout(()=>URL.revokeObjectURL(blobUrl), 60000);
-        toast('Label åbnet — brug Cmd+P til at printe');
+    // Iframe-trick: indlæs PDF og trigger print-dialog automatisk
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none';
+    iframe.src = blobUrl;
+    document.body.appendChild(iframe);
+    iframe.onload = () => {
+      try { iframe.contentWindow.print(); } catch(e) {
+        // Safari fallback: åbn i ny fane
+        window.open(blobUrl, '_blank');
       }
-    }
+      setTimeout(() => { iframe.remove(); URL.revokeObjectURL(blobUrl); }, 60000);
+    };
+    toast('Print-dialog åbner…');
   } catch(e) { alert('Fejl: '+e.message); }
 }
 
