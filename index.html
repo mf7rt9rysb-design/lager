@@ -62,6 +62,21 @@
 [data-theme="dark"] .ship-status.delivered{ background:rgba(74,154,74,.14); border-color:rgba(74,154,74,.25); }
 [data-theme="dark"] .ship-status.returned { background:rgba(224,64,64,.14); border-color:rgba(224,64,64,.25); }
 
+/* ── LIGHT THEME ── */
+[data-theme="light"] {
+  --bg: #f4f4f8;
+  --surface: #ffffff;
+  --surface-2: #ebebf0;
+  --surface-3: #dddde5;
+  --border: rgba(0,0,0,.08);
+  --border-light: rgba(0,0,0,.05);
+  --ink-1: #111118;
+  --ink-2: #44444f;
+  --ink-3: #88889a;
+  --accent: #5b5bd6;
+  --accent-dim: rgba(91,91,214,.12);
+}
+
 /* ── BULK ACTION BAR ── */
 .bulk-bar {
   position: fixed;
@@ -117,17 +132,6 @@
 
 /* ── QR MODAL ── */
 .qr-img { display: block; margin: 0 auto 12px; border-radius: 10px; }
-
-/* ── NOTIFICATION DOT ── */
-.notif-dot {
-  width: 7px; height: 7px;
-  background: var(--red);
-  border-radius: 50%;
-  display: inline-block;
-  margin-left: 4px;
-  vertical-align: middle;
-  animation: pulse 1.5s infinite;
-}
 
 /* ── CARRIER CHIPS ── */
 .carrier-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -1159,15 +1163,13 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
   box-shadow: 0 0 0 4000px rgba(0,0,0,.5);
 }
 
-/* ── NOTIFICATION BADGE ── */
-.notif-btn { position: relative; }
-.notif-badge {
-  position: absolute; top: 2px; right: 2px;
-  background: var(--red); color: #fff;
-  font-size: 9px; font-weight: 700; line-height: 14px;
-  border-radius: 99px; padding: 0 4px; min-width: 14px;
-  text-align: center; pointer-events: none;
-}
+/* ── ABC BADGES ── */
+.abc-badge { display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;vertical-align:middle;margin-left:4px;letter-spacing:.5px; }
+.abc-badge.abc-a { background:rgba(45,130,65,.2);color:#3cb371; }
+.abc-badge.abc-b { background:rgba(200,150,30,.2);color:#c8961e; }
+.abc-badge.abc-c { background:rgba(120,120,140,.15);color:var(--ink-3); }
+/* ── KEYBOARD NAVIGATION ── */
+#items-tbody tr.kb-selected { background: var(--accent-dim); outline: 1px solid var(--accent); }
 /* ── RAPPORTER ── */
 .abc-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 10px 0 4px; }
 .abc-a { background: var(--green); }
@@ -1413,7 +1415,6 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
           onkeydown="if(event.key==='Enter'&&this.value.trim()){sendAIFromSearch(this.value);this.value=''}else if(event.key==='Escape'){closeAI();this.blur()}">
       </div>
       <div class="topbar-actions">
-        <button class="btn btn-ghost btn-sm notif-btn" id="notif-bell" onclick="openNotifModal()" title="Notifikationer og lav-beholdning-advarsler">🔔<span class="notif-badge" id="notif-badge" style="display:none">0</span></button>
         <button class="btn btn-ghost btn-sm" id="dark-toggle" onclick="toggleDark()" title="Mørk/lys tilstand">☀</button>
         <button class="btn btn-ghost btn-sm" onclick="openShortcutsModal()" title="Tastaturgenveje">?</button>
         <button class="btn btn-ghost btn-sm" onclick="exportCSV()" title="Eksporter lagerliste som CSV">↓ CSV</button>
@@ -1464,6 +1465,14 @@ tbody tr:hover td { background: var(--surface); transition: background .08s; }
             </div>
             <div id="ov-low-low"></div>
           </div>
+        </div>
+        <div class="card" style="padding:20px;margin-top:16px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--ink-2)">Forsendelsesværdi — seneste 30 dage</div>
+          <div style="height:180px;position:relative"><canvas id="shipment-chart"></canvas></div>
+        </div>
+        <div class="card" style="padding:16px 20px;margin-top:16px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--ink-2)">Seneste aktivitet</div>
+          <div id="activity-feed"></div>
         </div>
         <div style="text-align:right;margin-top:16px">
           <button class="btn btn-ghost btn-sm" onclick="generateMonthlyReport()" style="font-size:12px">📄 Generer månedrapport PDF</button>
@@ -2015,7 +2024,6 @@ let allTemplates=[], templatesLoaded=false;
 let histEntries=[], histLoaded=false;
 let allLeverandoerer=[], leverandoererLoaded=false;
 let recvDraft={}; // {itemId: receivedQty}
-let notifLowSet=new Set();
 let selectedItems=new Set();
 let allPO=[], poLoaded=false;
 let autoTimer = null;
@@ -2076,7 +2084,6 @@ async function loadAll(quiet){
     const lowCount = items.filter(i=>parseInt(i.qty||0)<parseInt(i.minQty||0)).length;
     const pageSub=document.getElementById('page-sub'); if(pageSub) pageSub.textContent = items.length+' varer · '+rooms.length+' rum'+(lowCount?' · '+lowCount+' mangler':'')+' · opdateret '+time;
     renderAll();
-    checkAndNotify();
     if(!autoTimer){
       autoTimer = setInterval(()=>{ if(!document.hidden) loadAll(true); }, 30000);
       if(!window._visibilityListenerAdded){
@@ -2518,6 +2525,9 @@ function renderOverview(){
   lowEl.innerHTML = lowStock.length
     ? lowStock.map(rowHtml).join('')
     : '<div class="card-padded" style="font-size:13px;color:var(--green)">✓ Alt er over minimum</div>';
+
+  if(allShips.length) renderShipmentChart(allShips);
+  renderActivityFeed();
 }
 
 function renderItems(){
@@ -2541,6 +2551,7 @@ function renderItems(){
   em.style.display='none';
 
   let totalValue = 0, valuedCount = 0;
+  const abcMap = calcABC();
   const rows = fil.map(i=>{
     const r = rooms.find(r=>r.id===i.room);
     const low = parseInt(i.qty||0)<parseInt(i.minQty||0);
@@ -2580,12 +2591,13 @@ function renderItems(){
         ? (bestilOm<=0 ? '<div class="td-sub" style="color:var(--red);font-weight:700">Bestil NU</div>'
           : `<div class="td-sub" style="color:${bestilOm<=7?'var(--red)':bestilOm<=30?'var(--amber)':'var(--green)'}">bestil om ${bestilOm}d</div>`)
         : `<div class="td-sub" style="color:${dd<7?'var(--red)':dd<30?'var(--amber)':'var(--green)'}">~${Math.round(dd)}d</div>`;
-    return `<tr>
+    const abcClass = abcMap[i.id] || null;
+    return `<tr data-id="${i.id}">
       <td><input type="checkbox" class="row-check" ${checked} onchange="toggleCheck('${i.id}',this)"></td>
       <td style="display:flex;align-items:center;gap:10px">
         ${imgUrl?`<img src="${esc(imgUrl)}" style="width:36px;height:36px;object-fit:contain;border-radius:4px;border:1px solid var(--border-light);flex-shrink:0;cursor:zoom-in" loading="lazy" onerror="this.style.display='none'" onclick="openImgZoom('${esc(imgUrl)}')">`:''}
         <div>
-          <div class="td-name">${esc(i.name)}${i.bundle_json?'<span style="font-size:9px;background:rgba(99,102,241,.12);color:rgb(99,102,241);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">SÆT</span>':''}${i.note?`<span title="${esc(i.note)}" style="font-size:11px;margin-left:4px;cursor:help;opacity:.6">📝</span>`:''}</div>
+          <div class="td-name">${esc(i.name)}${i.bundle_json?'<span style="font-size:9px;background:rgba(99,102,241,.12);color:rgb(99,102,241);border-radius:4px;padding:1px 5px;margin-left:5px;font-weight:700;vertical-align:middle">SÆT</span>':''}${i.note?`<span title="${esc(i.note)}" style="font-size:11px;margin-left:4px;cursor:help;opacity:.6">📝</span>`:''}${abcClass?`<span class="abc-badge abc-${abcClass.toLowerCase()}">${abcClass}</span>`:''}</div>
           ${i.sku?`<div class="td-sub">${esc(i.sku)}</div>`:''}
           ${bundleCap!==null?`<div class="td-sub">Kan fremstille: <strong>${bundleCap}</strong> sæt</div>`:''}
         </div>
@@ -2595,8 +2607,8 @@ function renderItems(){
         <div style="font-size:12px;font-weight:500">${r?esc(r.name):'—'}</div>
         <div class="td-sub">${esc(i.shelf)}</div>
       </td>
-      <td>
-        <span style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13px;color:${low?'var(--red)':'var(--ink)'}">${esc(i.qty)}</span>
+      <td class="qty-cell" onclick="inlineEditQty(this,'${i.id}')" title="Klik for at redigere antal" style="cursor:pointer">
+        <span class="qty-val" style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13px;color:${low?'var(--red)':'var(--ink)'}">${esc(i.qty)}</span>
         ${low?'<span class="badge badge-red" style="margin-left:4px;font-size:9px">LAV</span>':''}
         ${reserved>0?`<div class="td-sub">${disponibel} dis. · ${reserved} res.</div>`:''}
         ${ddHtml}
@@ -4684,19 +4696,19 @@ if (sessionStorage.getItem('lager_auth') === '1') {
 // ── DARK MODE ──
 function toggleDark(){
   const dark = document.documentElement.getAttribute('data-theme') === 'dark';
-  document.documentElement.setAttribute('data-theme', dark ? '' : 'dark');
-  localStorage.setItem('lager_theme', dark ? 'light' : 'dark');
+  const next = dark ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('lager_theme', next);
   document.getElementById('dark-toggle').textContent = dark ? '☀' : '☾';
   if(shipChartInstance) { shipChartInstance.destroy(); shipChartInstance=null; renderChart(lastChartData); }
 }
 (function(){
-  if(localStorage.getItem('lager_theme') === 'dark'){
-    document.documentElement.setAttribute('data-theme','dark');
-    window.addEventListener('DOMContentLoaded',()=>{
-      const btn=document.getElementById('dark-toggle');
-      if(btn) btn.textContent='☾';
-    });
-  }
+  const t = localStorage.getItem('lager_theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  window.addEventListener('DOMContentLoaded',()=>{
+    const btn=document.getElementById('dark-toggle');
+    if(btn) btn.textContent = t==='dark' ? '☾' : '☀';
+  });
 })();
 
 // ── KEYBOARD SHORTCUTS ──
@@ -4712,6 +4724,26 @@ document.addEventListener('keydown', e => {
   if(e.key==='r' || e.key==='R'){ loadAll(); }
   if(e.key==='d' || e.key==='D'){ toggleDark(); }
   if(e.key==='a' || e.key==='A'){ e.preventDefault(); document.getElementById('ai-search-input')?.focus(); }
+  // Arrow key navigation in items list
+  if(localStorage.getItem('activeTab')==='varer' && !document.querySelector('.modal-overlay.active')){
+    const rows=[...document.querySelectorAll('#items-tbody tr')];
+    if(!rows.length) return;
+    const curr=document.querySelector('#items-tbody tr.kb-selected');
+    const idx=curr?rows.indexOf(curr):-1;
+    if(e.key==='ArrowDown'){
+      e.preventDefault();
+      const next=rows[Math.min(idx+1,rows.length-1)];
+      rows.forEach(r=>r.classList.remove('kb-selected')); next.classList.add('kb-selected'); next.scrollIntoView({block:'nearest'});
+    } else if(e.key==='ArrowUp'){
+      e.preventDefault();
+      const prev=rows[Math.max(idx-1,0)];
+      rows.forEach(r=>r.classList.remove('kb-selected')); prev.classList.add('kb-selected'); prev.scrollIntoView({block:'nearest'});
+    } else if(e.key==='Enter'&&curr){
+      e.preventDefault();
+      const itemId=curr.dataset.id;
+      if(itemId) openItemModal(itemId,null);
+    }
+  }
 });
 
 // Luk AI panel ved klik udenfor
@@ -4724,110 +4756,159 @@ document.addEventListener('click', e => {
 
 // ── CSV EXPORT ──
 
-// ── NOTIFIKATIONER ──
-function checkAndNotify(){
-  const low = items.filter(i=>parseInt(i.qty||0)<parseInt(i.minQty||0));
-  const badge = document.getElementById('notif-badge');
-  if(badge){ badge.textContent=low.length; badge.style.display=low.length?'block':'none'; }
+// ── ABC ANALYSE ──
+function calcABC(){
+  if(!histEntries.length) return {};
+  const sales={};
+  histEntries.forEach(h=>{
+    if(h.action==='sell'||h.action==='update'){
+      const delta=parseFloat(h.delta||0);
+      if(delta<0){
+        const match=findSesuPrice(h.item_name||'','','');
+        const priceVal=match?match.price:0;
+        sales[h.item_id]=(sales[h.item_id]||0)+Math.abs(delta)*(priceVal||0);
+      }
+    }
+  });
+  const total=Object.values(sales).reduce((a,b)=>a+b,0);
+  if(!total) return {};
+  const sorted=Object.entries(sales).sort((a,b)=>b[1]-a[1]);
+  const result={};
+  let cum=0;
+  sorted.forEach(([id,val])=>{
+    cum+=val;
+    const pct=cum/total;
+    result[id]=pct<=0.8?'A':pct<=0.95?'B':'C';
+  });
+  return result;
+}
 
-  const perm = Notification.permission;
-  const enabled = localStorage.getItem('notif_browser')==='1';
-  if(perm!=='granted' || !enabled) return;
-  low.forEach(i=>{
-    if(notifLowSet.has(i.id)) return;
-    notifLowSet.add(i.id);
-    new Notification('Lav beholdning: '+i.name, {
-      body: i.qty+' stk tilbage / min. '+i.minQty+' stk',
-      icon: 'https://sesu.dk/wp-content/uploads/2021/09/logo-212X212.png'
-    });
+// ── INLINE ANTAL REDIGERING ──
+function inlineEditQty(cell,itemId){
+  if(cell.querySelector('input')) return;
+  const span=cell.querySelector('.qty-val');
+  if(!span) return;
+  const old=parseInt(span.textContent||0);
+  const inp=document.createElement('input');
+  inp.type='number'; inp.min='0'; inp.value=old;
+  inp.style.cssText='width:60px;padding:2px 6px;font-size:13px;border:1px solid var(--accent);border-radius:4px;background:var(--surface-2);color:var(--ink-1,var(--ink));text-align:center';
+  inp.onclick=e=>e.stopPropagation();
+  span.replaceWith(inp);
+  inp.focus(); inp.select();
+  async function commit(){
+    const newQty=Math.max(0,parseInt(inp.value)||0);
+    const newSpan=document.createElement('span');
+    newSpan.className='qty-val';
+    newSpan.style.cssText=`font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13px;color:var(--ink)`;
+    newSpan.textContent=newQty;
+    inp.replaceWith(newSpan);
+    if(newQty===old) return;
+    const item=items.find(it=>it.id===itemId);
+    if(!item) return;
+    item.qty=newQty;
+    await jsonp({action:'saveItem',item});
+    toast('Antal opdateret');
+    renderItems();
+  }
+  inp.addEventListener('blur',commit);
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();inp.blur();}
+    if(e.key==='Escape'){
+      const s=document.createElement('span');
+      s.className='qty-val';
+      s.style.cssText=`font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:13px;color:var(--ink)`;
+      s.textContent=old;
+      inp.replaceWith(s);
+      inp.removeEventListener('blur',commit);
+    }
   });
 }
 
-function openNotifModal(){
-  const perm = Notification.permission;
-  const enabled = localStorage.getItem('notif_browser')==='1';
-  const savedEmail = localStorage.getItem('lager_alert_email')||localStorage.getItem('lager_order_email')||'';
-  const low = items.filter(i=>parseInt(i.qty||0)<parseInt(i.minQty||0));
-  document.getElementById('modal-box').innerHTML=`
-    <div class="modal-head">
-      <div class="modal-title">🔔 Notifikationer</div>
-      <button class="modal-close" onclick="closeModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      ${low.length ? `<div style="background:var(--red-dim);border:1px solid rgba(184,32,32,.15);border-radius:var(--radius);padding:10px 14px;font-size:13px;color:var(--red);margin-bottom:16px;font-weight:500">${low.length} vare${low.length===1?'':'r'} under minimumsbeholdning</div>` : `<div style="background:var(--green-dim);border:1px solid rgba(45,106,45,.15);border-radius:var(--radius);padding:10px 14px;font-size:13px;color:var(--green);margin-bottom:16px">Alt er over minimumsbeholdning ✓</div>`}
-      <div class="card" style="padding:16px 20px;margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div>
-            <div style="font-size:13px;font-weight:600">Browser-notifikationer</div>
-            <div style="font-size:11px;color:var(--ink-3);margin-top:2px">Viser en systemnotifikation når lager falder under minimum</div>
-          </div>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-            <input type="checkbox" id="notif-chk" ${enabled&&perm==='granted'?'checked':''} onchange="toggleBrowserNotif(this.checked)">
-            <span style="font-size:12px">${perm==='denied'?'<span style="color:var(--red)">Blokeret af browser</span>':perm==='granted'?'Tilladt':'Ikke anmodet'}</span>
-          </label>
-        </div>
-      </div>
-      <div class="card" style="padding:16px 20px">
-        <div style="font-size:13px;font-weight:600;margin-bottom:10px">E-mail advarsler</div>
-        <div class="form-row" style="margin-bottom:10px">
-          <div class="fg"><label>E-mail adresse</label><input id="notif-email" type="email" value="${esc(savedEmail)}" placeholder="din@email.dk" oninput="localStorage.setItem('lager_alert_email',this.value)"></div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-sm" onclick="sendAlertEmail()">📧 Send test-advarsel nu</button>
-          <button class="btn btn-ghost btn-sm" style="font-size:11px" onclick="openNotifTriggerHelp()">? Daglig automatisk email</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-foot"><button class="btn btn-primary" onclick="closeModal()">Luk</button></div>`;
-  openModal();
+// ── LEVERANDØR LEDTID ──
+function calcReorderAlert(item){
+  const qty=parseInt(item.qty||0);
+  const minQty=parseInt(item.minQty||0);
+  const lev=allLeverandoerer.find(l=>l.id===item.leverandoerId);
+  if(!lev||!lev.leadDays) return null;
+  const lead=parseInt(lev.leadDays);
+  const sales=histEntries.filter(h=>(h.action==='sell'||h.action==='update')&&h.item_id===item.id&&parseFloat(h.delta||0)<0);
+  const dailyUse=sales.length?Math.abs(sales.reduce((s,h)=>s+parseFloat(h.delta||0),0))/Math.max(1,sales.length):0;
+  if(!dailyUse) return null;
+  const daysLeft=(qty-minQty)/dailyUse;
+  if(daysLeft<=lead+2) return Math.max(0,Math.round(daysLeft-lead));
+  return null;
 }
 
-async function toggleBrowserNotif(checked){
-  if(!checked){ localStorage.setItem('notif_browser','0'); return; }
-  if(Notification.permission==='denied'){ toast('Notifikationer er blokeret — tillad dem i browserindstillingerne'); document.getElementById('notif-chk').checked=false; return; }
-  const perm = await Notification.requestPermission();
-  if(perm==='granted'){ localStorage.setItem('notif_browser','1'); toast('Browser-notifikationer aktiveret'); }
-  else { document.getElementById('notif-chk').checked=false; }
+// ── 30 DAGES FORSENDELSESCHART ──
+let shipment30ChartInst=null;
+function renderShipmentChart(ships){
+  const canvas=document.getElementById('shipment-chart');
+  if(!canvas) return;
+  const now=new Date();
+  const days=30;
+  const labels=[],data=[];
+  for(let i=days-1;i>=0;i--){
+    const d=new Date(now); d.setDate(d.getDate()-i);
+    labels.push(d.toLocaleDateString('da-DK',{day:'numeric',month:'short'}));
+    const dayStr=d.toISOString().slice(0,10);
+    const val=ships
+      .filter(s=>s.created_at&&s.created_at.startsWith(dayStr))
+      .reduce((sum,s)=>sum+(parseFloat(s.total_price||s.price||0)),0);
+    data.push(parseFloat(val.toFixed(2)));
+  }
+  if(shipment30ChartInst) shipment30ChartInst.destroy();
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  const gridCol=dark?'rgba(255,255,255,.05)':'rgba(0,0,0,.06)';
+  const tickCol=dark?'rgba(255,255,255,.4)':'rgba(0,0,0,.4)';
+  shipment30ChartInst=new Chart(canvas,{
+    type:'line',
+    data:{
+      labels,
+      datasets:[{
+        label:'Forsendelsesværdi (kr.)',
+        data,
+        borderColor:'#5b5bd6',
+        backgroundColor:'rgba(91,91,214,.08)',
+        borderWidth:2,
+        pointRadius:3,
+        pointHoverRadius:5,
+        fill:true,
+        tension:0.4
+      }]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>`${ctx.parsed.y.toFixed(2)} kr.`}}},
+      scales:{
+        x:{grid:{color:gridCol},ticks:{color:tickCol,maxTicksLimit:8,font:{size:11}}},
+        y:{grid:{color:gridCol},ticks:{color:tickCol,font:{size:11},callback:v=>v+' kr.'}}
+      }
+    }
+  });
 }
 
-async function sendAlertEmail(){
-  const email = document.getElementById('notif-email')?.value.trim();
-  if(!email){ toast('Angiv en e-mail adresse'); return; }
-  localStorage.setItem('lager_alert_email', email);
-  try {
-    const r = await jsonp({ action:'sendLowStockAlert', email });
-    if(r.error) throw new Error(r.error);
-    toast(r.sent ? `E-mail sendt til ${email} (${r.count} varer)` : 'Ingen varer under minimum — ingen e-mail sendt');
-  } catch(e){ toast('Fejl: '+e.message); }
-}
-
-function openNotifTriggerHelp(){
-  document.getElementById('modal-box').innerHTML=`
-    <div class="modal-head">
-      <div class="modal-title">Automatisk daglig e-mail</div>
-      <button class="modal-close" onclick="closeModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:13px;color:var(--ink-2);line-height:1.7;margin-bottom:12px">Sæt en daglig e-mail op direkte i Apps Script:</p>
-      <ol style="font-size:13px;color:var(--ink-2);line-height:2;padding-left:20px">
-        <li>Åbn <strong>lager-script</strong> i Google Apps Script</li>
-        <li>Klik <strong>Triggere</strong> (ur-ikonet) i venstremenuen</li>
-        <li>Klik <strong>+ Tilføj trigger</strong></li>
-        <li>Vælg funktion: <code style="background:var(--surface-2);padding:1px 5px;border-radius:3px">sendDailyAlert</code></li>
-        <li>Hændelseskilde: <strong>Tidsbaseret</strong></li>
-        <li>Type: <strong>Dag-timer</strong>, f.eks. 08:00–09:00</li>
-      </ol>
-      <div style="margin-top:12px;padding:10px 14px;background:var(--blue-dim);border-radius:var(--radius);font-size:12px;color:var(--blue)">
-        Tilføj denne funktion til Code.js og sæt ALERT_EMAIL i Script Properties:
-        <pre style="margin-top:8px;font-size:11px;overflow-x:auto">function sendDailyAlert(){
-  sendLowStockAlert(SpreadsheetApp.getActiveSpreadsheet(),
-    {email: PropertiesService.getScriptProperties()
-      .getProperty('ALERT_EMAIL')});
-}</pre>
+// ── AKTIVITETSFEED ──
+function renderActivityFeed(){
+  const el=document.getElementById('activity-feed');
+  if(!el) return;
+  if(!histEntries.length){
+    el.innerHTML='<div style="color:var(--ink-3);font-size:12px;padding:8px 0">Besøg Historik-fanen for at indlæse aktivitet</div>';
+    return;
+  }
+  const recent=[...histEntries].sort((a,b)=>new Date(b.ts||b.created_at||0)-new Date(a.ts||a.created_at||0)).slice(0,8);
+  el.innerHTML=recent.map(h=>{
+    const icon=h.action==='sell'?'↓':h.action==='receive'?'↑':h.action==='create'?'+':h.action==='delete'?'×':'·';
+    const color=h.action==='sell'?'var(--red)':h.action==='receive'?'var(--green)':'var(--ink-3)';
+    const time=h.ts?new Date(h.ts).toLocaleString('da-DK',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border-light)">
+      <span style="color:${color};font-size:13px;font-weight:700;width:14px;text-align:center">${icon}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;color:var(--ink-1,var(--ink));white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(h.item_name||h.description||h.action||'')}</div>
+        <div style="font-size:11px;color:var(--ink-3)">${time}${h.delta?` · ${h.delta>0?'+':''}${h.delta} stk`:''}</div>
       </div>
-    </div>
-    <div class="modal-foot"><button class="btn" onclick="closeModal()">Luk</button></div>`;
-  openModal();
+    </div>`;
+  }).join('');
 }
 
 // ── VAREMODTAGELSE ──
@@ -6976,7 +7057,7 @@ function renderChart(months){
 document.querySelector('#tab-oversigt').classList.add('active');
 const _hasToken = !!sessionStorage.getItem('lager_token');
 if (_hasToken) {
-  loadAll().then(()=>checkNotifications());
+  loadAll();
   loadBalance();
   loadMonthlyStats();
   loadMonthlyHistory();
