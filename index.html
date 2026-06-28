@@ -3332,8 +3332,7 @@ async function doPrintLabel(id){
   toast('Henter label fra Shipmondo…');
   try {
     const d = await jsonpShip({ action:'getLabel', id, format: fmt });
-    if(d.error && !d.label_b64) { alert('Fejl: ' + d.error); return; }
-    if(!d.label_b64) { alert('Ingen label tilgængelig for denne forsendelse'); return; }
+    if(!d.label_b64) { alert(d.error ? 'Fejl: ' + d.error : 'Ingen label — forsendelsen har muligvis ikke en label endnu'); return; }
 
     const byteChars = atob(d.label_b64);
     const bytes = new Uint8Array(byteChars.length);
