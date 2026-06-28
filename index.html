@@ -3686,7 +3686,10 @@ let sesuPricesLoaded = false;
 
 
 // ── MÅNEDRAPPORT PDF ──
-function generateMonthlyReport() {
+async function generateMonthlyReport() {
+  // Sørg for data er indlæst
+  if(!allShips.length && shipLoaded) { toast('Ingen forsendelsesdata — besøg Forsendelser-fanen først'); }
+  await loadSO();
   const now = new Date();
   const MONTHS = ['januar','februar','marts','april','maj','juni','juli','august','september','oktober','november','december'];
   const monthName = MONTHS[now.getMonth()];
@@ -3852,9 +3855,24 @@ function generateMonthlyReport() {
 </body>
 </html>`;
 
-  const w = window.open('', '_blank');
-  if(w) { w.document.write(html); w.document.close(); }
-  else toast('Tillad popups for at åbne rapporten');
+  try {
+    const w = window.open('', '_blank');
+    if(w) {
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+    } else {
+      // Popup blokeret — download som HTML-fil i stedet
+      const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `SESU-rapport-${monthName}-${year}.html`;
+      a.click();
+      toast('Popup blokeret — rapport downloadet som HTML-fil. Åbn den og print til PDF.');
+    }
+  } catch(e) {
+    toast('Fejl: ' + e.message);
+  }
 }
 
 // ── TOP 10 MEST SOLGTE ──
