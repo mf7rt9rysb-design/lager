@@ -4158,6 +4158,16 @@ function calcBedstePris(){
   resEl.innerHTML=`<div style="border-top:1px solid var(--border)">${rows}</div>`;
 }
 
+function matchStaticPrice(carrierName, productLabel) {
+  const c = carrierName.toLowerCase();
+  const n = productLabel.toLowerCase();
+  return STATIC_PRICES.find(p => {
+    if(!c.includes(p.carrier.toLowerCase())) return false;
+    // Tjek om nogen ord fra STATIC_PRICES-navnet matcher produktlabelen
+    return p.name.toLowerCase().split(/[\s&(]+/).some(word => word.length > 2 && n.includes(word));
+  }) || null;
+}
+
 function updateShipmentPrice(){
   const el = document.getElementById('sh-price-est');
   if(!el) return;
@@ -4165,54 +4175,61 @@ function updateShipmentPrice(){
   if(!w || w < 1) { el.innerHTML = '<span style="color:var(--ink-3)">Angiv vægt for at se prisestimering</span>'; return; }
   if(w > 20000) { el.innerHTML = '<span style="color:var(--red)">Over 20 kg ikke understøttet</span>'; return; }
 
-  // Match valgt produkt til STATIC_PRICES
   const sel = document.getElementById('sh-product');
-  const opt = sel?.options[sel.selectedIndex];
-  const carrier = (opt?.dataset.carrier || '').toLowerCase();
-  const pname   = (opt?.dataset.pname || opt?.text || '').toLowerCase();
+  if(!sel) return;
 
-  const matched = STATIC_PRICES.find(p =>
-    carrier.includes(p.carrier.toLowerCase()) &&
-    (pname.includes(p.name.toLowerCase().split(' ')[0]) ||
-     p.name.toLowerCase().split(' ')[0].includes(pname.split(' ')[0]))
-  );
+  // Byg prisliste KUN fra de produkter der faktisk er i dropdown'en
+  const opts = [...sel.options];
+  const rows = [];
+  opts.forEach(o => {
+    if(!o.value) return; // skip optgroup-placeholder
+    const carrier = o.dataset.carrier || '';
+    const label   = o.dataset.pname || o.text || '';
+    const sp = matchStaticPrice(carrier, label);
+    const price = sp ? getStaticPrice(sp, w) : null;
+    rows.push({ value: o.value, carrier, label, price, selected: o === sel.options[sel.selectedIndex] });
+  });
 
-  // Alle muligheder sorteret efter pris
-  const all = STATIC_PRICES
-    .map(p => ({ ...p, price: getStaticPrice(p, w) }))
-    .filter(p => p.price != null)
-    .sort((a, b) => a.price - b.price);
+  // Sorter: produkter med kendte priser først (billigst→dyrest), dernæst ukendte
+  rows.sort((a, b) => {
+    if(a.price == null && b.price == null) return 0;
+    if(a.price == null) return 1;
+    if(b.price == null) return -1;
+    return a.price - b.price;
+  });
 
-  const matchedPrice = matched ? getStaticPrice(matched, w) : null;
-  const cheapest = all[0];
+  const withPrice = rows.filter(r => r.price != null);
+  const selectedRow = rows.find(r => r.selected);
+  const cheapest = withPrice[0];
 
   let html = '';
 
-  // Valgt produkt — stor pris
-  if(matchedPrice != null) {
-    const saving = cheapest && cheapest.price < matchedPrice ? matchedPrice - cheapest.price : 0;
-    html += `<div style="display:flex;align-items:baseline;gap:10px;padding:10px 14px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:8px;margin-bottom:10px">
-      <span style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:700;color:var(--accent)">${fmtKr(matchedPrice)}</span>
-      <span style="font-size:12px;color:var(--ink-2)">${esc(matched.carrier)} · ${esc(matched.name)}</span>
-      ${saving > 0.5 ? `<span style="font-size:11px;color:var(--amber);margin-left:auto">+${fmtKr(saving)} dyrere end billigste</span>` : ''}
+  // Valgt produkt — stor fremhævet pris
+  if(selectedRow) {
+    const price = selectedRow.price;
+    const saving = price != null && cheapest && cheapest.price < price ? price - cheapest.price : 0;
+    html += `<div style="display:flex;align-items:baseline;gap:10px;padding:10px 14px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:8px;margin-bottom:10px;flex-wrap:wrap">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:700;color:var(--accent)">${price != null ? fmtKr(price) : '—'}</span>
+      <span style="font-size:12px;color:var(--ink-2)">${esc(selectedRow.carrier)} · ${esc(selectedRow.label)}</span>
+      ${saving > 0.5 ? `<span style="font-size:11px;color:var(--amber);margin-left:auto">+${fmtKr(saving)} vs billigste</span>` : (price === cheapest?.price && withPrice.length > 1 ? '<span style="font-size:11px;color:var(--green);margin-left:auto">Billigst valg</span>' : '')}
     </div>`;
-  } else {
-    html += `<div style="color:var(--ink-3);font-size:12px;margin-bottom:8px">Valgt produkt ikke i statisk prisliste — se alternativer nedenfor</div>`;
   }
 
-  // Øvrige muligheder
-  html += `<div style="font-size:11px;color:var(--ink-3);margin-bottom:6px">Alle muligheder ved ${w >= 1000 ? (w/1000).toFixed(1)+' kg' : w+' g'}:</div>`;
-  html += `<div style="display:flex;flex-direction:column;gap:3px">`;
-  html += all.map((p, i) => {
-    const isSelected = matched && p.carrier === matched.carrier && p.name === matched.name;
-    const isCheapest = i === 0;
-    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;background:${isSelected ? 'var(--accent-dim)' : 'transparent'}">
-      <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;width:70px;flex-shrink:0">${fmtKr(p.price)}</span>
+  // Liste over alle dropdown-muligheder med pris
+  const wLabel = w >= 1000 ? (w/1000).toFixed(1)+' kg' : w+' g';
+  html += `<div style="font-size:11px;color:var(--ink-3);margin-bottom:6px">Dine muligheder ved ${wLabel}:</div>`;
+  html += `<div style="display:flex;flex-direction:column;gap:2px">`;
+  html += rows.map((r, i) => {
+    const isSelected = r.selected;
+    const isCheapest = r.price != null && r.price === cheapest?.price;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;background:${isSelected ? 'var(--accent-dim)' : 'transparent'}" onclick="document.getElementById('sh-product').value='${r.value}';updateShipmentPrice()">
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;width:72px;flex-shrink:0;color:${r.price==null?'var(--ink-3)':'inherit'}">${r.price != null ? fmtKr(r.price) : '—'}</span>
       ${isCheapest ? '<span style="font-size:9px;font-weight:700;background:rgba(45,130,65,.2);color:#3cb371;border-radius:3px;padding:1px 5px;flex-shrink:0">BILLIGST</span>' : '<span style="width:51px;flex-shrink:0"></span>'}
-      <span style="font-size:12px;color:var(--ink-2)">${esc(p.carrier)} · ${esc(p.name)}</span>
+      <span style="font-size:12px;color:${isSelected?'var(--ink-1)':'var(--ink-2)'};font-weight:${isSelected?'600':'400'}">${esc(r.carrier)} · ${esc(r.label)}</span>
+      ${isSelected ? '<span style="margin-left:auto;font-size:10px;color:var(--accent)">valgt</span>' : ''}
     </div>`;
   }).join('');
-  html += `</div><div style="font-size:10px;color:var(--ink-3);margin-top:8px">Estimerede priser — faktisk pris aftales med Shipmondo</div>`;
+  html += `</div><div style="font-size:10px;color:var(--ink-3);margin-top:8px">Estimerede listepriser — klik en linje for at vælge</div>`;
 
   el.innerHTML = html;
 }
