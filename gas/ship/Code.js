@@ -475,7 +475,7 @@ function getProducts(p) {
 
 function getSesuPrices(forceRefresh) {
   var cache = CacheService.getScriptCache();
-  var KEY = 'sesu_prices_v7';
+  var KEY = 'sesu_prices_v8';
   if (!forceRefresh) {
     var cached = cache.get(KEY);
     if (cached) return JSON.parse(cached);
