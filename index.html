@@ -3935,8 +3935,8 @@ async function generatePartnerReport() {
     return sum + lv;
   }, 0);
 
-  // Adgangskode (simpel hash for at undgå klartekst i HTML-source)
-  const _ph = btoa('dpt68uwe!');
+  // SHA-256 af adgangskoden — koden kan ikke aflæses fra HTML-source
+  const _ph = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('dpt68uwe!')).then(b => Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join(''));
 
   const html = `<!DOCTYPE html><html lang="da"><head><meta charset="UTF-8">
 <title>SESU Lagerstatus — ${today}</title>
@@ -4067,19 +4067,27 @@ ${(()=>{
 <script>
 (function(){
   var ph='${_ph}';
-  document.getElementById('pw-inp').focus();
-  if(sessionStorage.getItem('r_ok')==='1'){unlock();}
+  var inp=document.getElementById('pw-inp');
+  var err=document.getElementById('pw-err');
+  inp.focus();
+  if(sessionStorage.getItem('r_ok')===ph){unlock();}
   function unlock(){
     document.getElementById('gate').style.display='none';
     document.getElementById('report').style.display='';
   }
+  function sha256(s){
+    return crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))
+      .then(function(b){return Array.from(new Uint8Array(b)).map(function(x){return x.toString(16).padStart(2,'0');}).join('');});
+  }
   window.checkPw=function(){
-    var v=document.getElementById('pw-inp').value;
-    if(btoa(v)===ph){sessionStorage.setItem('r_ok','1');unlock();}
-    else{document.getElementById('pw-err').textContent='Forkert adgangskode';document.getElementById('pw-inp').value='';document.getElementById('pw-inp').focus();}
+    var v=inp.value;
+    sha256(v).then(function(h){
+      if(h===ph){sessionStorage.setItem('r_ok',ph);unlock();}
+      else{err.textContent='Forkert adgangskode';inp.value='';inp.focus();}
+    });
   };
 })();
-</script>
+\x3C/script>
 </body></html>`;
 
   win.document.open();
