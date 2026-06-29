@@ -3927,6 +3927,24 @@ async function generatePartnerReport() {
   const tableOpen = (cols) => `<table style="width:100%;border-collapse:collapse;margin-bottom:32px"><thead><tr>${cols.map(c=>`<th style="${thStyle}">${c}</th>`).join('')}</tr></thead><tbody>`;
   const tableClose = '</tbody></table>';
 
+  // Gennemsnitspris per kategori (baseret på varer der ER på sesu.dk og ikke udsolgt)
+  const catPrices = {};
+  [...aktiv, ...udsolgt].forEach(({item, sesu}) => {
+    if(!sesu.price) return;
+    const cat = (item.cat||'andet').trim().toLowerCase();
+    if(!catPrices[cat]) catPrices[cat] = [];
+    catPrices[cat].push(sesu.price);
+  });
+  const catAvg = {};
+  Object.keys(catPrices).forEach(c => {
+    catAvg[c] = Math.round(catPrices[c].reduce((a,b)=>a+b,0)/catPrices[c].length);
+  });
+  const potAvgPrice = i => catAvg[(i.cat||'andet').trim().toLowerCase()] || null;
+  const potLvTotal = ikkeTilSalg.reduce((sum,i) => {
+    const avg = potAvgPrice(i); const qty = parseInt(i.qty||0);
+    return sum + (avg ? avg*qty : 0);
+  }, 0);
+
   // Beregn total lagerværdi
   const totalLv = inStock.reduce((sum, i) => {
     const kostpris = parseFloat(i.costPrice||0)||null;
@@ -4005,6 +4023,10 @@ async function generatePartnerReport() {
     <div class="kpi-label">Ikke til salg på sesu.dk</div>
     <div class="kpi-value">${ikkeTilSalg.length}</div>
   </div>
+  <div class="kpi" style="border:2px dashed #ccc">
+    <div class="kpi-label">Potentiel lagerværdi (unoterede varer) ∅ gennemsnit</div>
+    <div class="kpi-value" style="font-size:18px">${potLvTotal > 0 ? Math.round(potLvTotal).toLocaleString('da-DK') + ' kr.' : '—'}</div>
+  </div>
 </div>
 
 ${(()=>{
@@ -4045,14 +4067,20 @@ ${udsolgt.length ? tableOpen(['Varenavn','SKU','Antal på lager','Salgspris']) +
 : '<div class="empty">Ingen varer i denne kategori</div>'}
 
 <h2>Ikke til salg på sesu.dk <span class="badge">${ikkeTilSalg.length}</span></h2>
-<div class="desc">Disse varer er på lager men matcher ingen produkt på sesu.dk — enten unoterede varianter, interne varer eller lagervarer uden salgsside.</div>
-${ikkeTilSalg.length ? tableOpen(['Varenavn','SKU','Kategori','Antal på lager']) +
-  ikkeTilSalg.sort((a,b)=>(a.name||'').localeCompare(b.name||'','da')).map(item => `<tr>
+<div class="desc">Disse varer er på lager men matcher ingen produkt på sesu.dk. Potentiel salgspris er beregnet som gennemsnit (∅) af øvrige varer i samme kategori på sesu.dk.</div>
+${ikkeTilSalg.length ? tableOpen(['Varenavn','SKU','Kategori','Antal','∅ Pot. salgspris','Pot. lagerværdi']) +
+  ikkeTilSalg.sort((a,b)=>(a.name||'').localeCompare(b.name||'','da')).map(item => {
+    const avg = potAvgPrice(item);
+    const qty = parseInt(item.qty||0);
+    const potLv = avg ? avg*qty : null;
+    return `<tr>
     <td style="${rowStyle}"><strong>${esc2(item.name)}</strong></td>
     <td style="${rowStyle};font-family:monospace;font-size:12px;color:#888">${esc2(item.sku||'—')}</td>
     <td style="${rowStyle};color:#666">${esc2(item.cat||'—')}</td>
-    <td style="${rowStyle}" class="num">${parseInt(item.qty||0).toLocaleString('da-DK')}</td>
-  </tr>`).join('') + tableClose
+    <td style="${rowStyle}" class="num">${qty.toLocaleString('da-DK')}</td>
+    <td style="${rowStyle}" class="num" style="color:#888;font-style:italic">${avg ? avg.toLocaleString('da-DK')+' kr.' : '—'}</td>
+    <td style="${rowStyle}" class="num" style="color:#1a5fa8;font-weight:700">${kr(potLv)}</td>
+  </tr>`;}).join('') + tableClose
 : '<div class="empty">Ingen varer i denne kategori</div>'}
 
 <h2>Top 10 bordben — flest på lager <span class="badge">tilbudspotentiale</span></h2>
