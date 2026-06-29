@@ -1718,6 +1718,7 @@ body.compact .low-row { padding: 8px 16px; }
       <!-- RAPPORTER -->
       <div id="tab-rapporter" class="view" style="display:none">
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:20px">
+          <button class="btn btn-accent btn-sm" onclick="generatePartnerReport()" title="Generer rapport til partner med lagerstatus vs. sesu.dk">📋 Partner rapport</button>
           <button class="btn btn-ghost btn-sm" onclick="renderRapporter(true)">⟳ Opdater</button>
         </div>
         <div id="rap-content">
@@ -2209,8 +2210,8 @@ async function loadSesuPrices() {
           sesuPrices[sku] = v.price;
           if(v.url) sesuUrls[sku] = v.url;
           if(v.image) sesuImages[sku] = v.image;
-          if(v.name) sesuByName[normName(v.name)] = { price: v.price, sku, name: v.name, url: v.url || '', image: v.image || '' };
-          sesuProducts.push({ sku, price: v.price, name: v.name || sku, url: v.url || '', image: v.image || '' });
+          if(v.name) sesuByName[normName(v.name)] = { price: v.price, sku, name: v.name, url: v.url || '', image: v.image || '', outofstock: !!v.outofstock };
+          sesuProducts.push({ sku, price: v.price, name: v.name || sku, url: v.url || '', image: v.image || '', outofstock: !!v.outofstock });
         } else {
           sesuPrices[sku] = v;
           sesuProducts.push({ sku, price: v, name: sku, url: '' });
@@ -3838,6 +3839,128 @@ let sesuImages = {}; // sku → sesu.dk product image URL
 let sesuProducts = []; // [{sku, price, name}] sorted by name
 let sesuPricesLoaded = false;
 
+
+// ── PARTNER RAPPORT ──
+async function generatePartnerReport() {
+  if(!sesuPricesLoaded) {
+    toast('Henter sesu.dk priser…');
+    await loadSesuPrices();
+    if(!sesuPricesLoaded) { alert('Kunne ikke hente sesu.dk priser — prøv igen'); return; }
+  }
+  const win = window.open('', '_blank');
+  if(!win) { alert('Popup blokeret — tillad popups for denne side'); return; }
+
+  const today = new Date().toLocaleDateString('da-DK', { day:'numeric', month:'long', year:'numeric' });
+
+  // Byg sesuBySkuFull: alle sesu-produkter inkl. outofstock
+  const sesuBySku = {};
+  sesuProducts.forEach(p => { sesuBySku[p.sku] = p; });
+
+  // Kategoriser lager-varer
+  const inStock = items.filter(i => parseInt(i.qty||0) > 0);
+  const udsolgt = [], ikkeTilSalg = [], aktiv = [];
+
+  inStock.forEach(i => {
+    const match = findSesuPrice(i.name, i.sku, i.imageUrl||'');
+    if(!match) {
+      ikkeTilSalg.push(i);
+    } else if(match.outofstock) {
+      udsolgt.push({ item: i, sesu: match });
+    } else {
+      aktiv.push({ item: i, sesu: match });
+    }
+  });
+
+  // Top 10 bordben (antal på lager, kun kategorien Bordben eller navn indeholder bordben)
+  const bordben = inStock
+    .filter(i => (i.cat||'').toLowerCase().includes('bordben') || (i.name||'').toLowerCase().includes('bordben'))
+    .map(i => {
+      const match = findSesuPrice(i.name, i.sku, i.imageUrl||'');
+      const salgspris = match ? match.price : null;
+      const kostpris  = parseFloat(i.costPrice||0) || null;
+      const qty = parseInt(i.qty||0);
+      const lagervaerdi = kostpris ? kostpris*qty : salgspris ? salgspris*qty : null;
+      return { item: i, qty, salgspris, lagervaerdi };
+    })
+    .sort((a,b) => b.qty - a.qty)
+    .slice(0, 10);
+
+  const kr = n => n != null ? n.toLocaleString('da-DK') + ' kr.' : '—';
+  const esc2 = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const rowStyle = 'padding:10px 14px;border-bottom:1px solid #eee;font-size:13px';
+  const thStyle  = 'padding:10px 14px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#888;background:#f8f8f8;border-bottom:2px solid #ddd;text-align:left';
+
+  const tableOpen = (cols) => `<table style="width:100%;border-collapse:collapse;margin-bottom:32px"><thead><tr>${cols.map(c=>`<th style="${thStyle}">${c}</th>`).join('')}</tr></thead><tbody>`;
+  const tableClose = '</tbody></table>';
+
+  const html = `<!DOCTYPE html><html lang="da"><head><meta charset="UTF-8">
+<title>SESU Lagerstatus — ${today}</title>
+<style>
+  body { font-family: -apple-system, 'Helvetica Neue', sans-serif; color: #1a1a1a; margin: 0; padding: 40px; max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 26px; font-weight: 700; margin: 0 0 4px; }
+  .meta { font-size: 13px; color: #888; margin-bottom: 40px; }
+  h2 { font-size: 16px; font-weight: 700; margin: 40px 0 6px; padding-bottom: 8px; border-bottom: 2px solid #222; }
+  h2 .badge { font-size: 12px; font-weight: 600; background: #f0f0f0; color: #555; border-radius: 20px; padding: 2px 10px; margin-left: 8px; vertical-align: middle; }
+  .desc { font-size: 12px; color: #888; margin-bottom: 16px; }
+  tr:last-child td { border-bottom: none; }
+  .num { font-family: 'Courier New', monospace; font-weight: 600; text-align: right; }
+  .empty { color: #aaa; font-size: 13px; padding: 20px; text-align: center; background: #fafafa; border-radius: 8px; }
+  .rank { color: #bbb; font-family: monospace; width: 32px; }
+  @media print {
+    body { padding: 20px; }
+    h2 { break-before: auto; }
+    table { break-inside: avoid; }
+  }
+  .print-btn { position:fixed; top:20px; right:20px; background:#222; color:#fff; border:none; padding:10px 18px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .print-btn:hover { background:#444; }
+  @media print { .print-btn { display:none; } }
+</style>
+</head><body>
+<button class="print-btn" onclick="window.print()">🖨 Print rapport</button>
+<h1>SESU Lagerstatus</h1>
+<div class="meta">Genereret: ${today} · ${inStock.length} varer på lager · sammenlignet med sesu.dk</div>
+
+<h2>Udsolgt på sesu.dk <span class="badge">${udsolgt.length}</span></h2>
+<div class="desc">Vi har disse varer på lager, men de vises som udsolgt på websiden — potentielle muligheder for hurtig genopfyldning.</div>
+${udsolgt.length ? tableOpen(['Varenavn','SKU','Antal på lager','Salgspris']) +
+  udsolgt.map(({item,sesu}) => `<tr>
+    <td style="${rowStyle}"><strong>${esc2(item.name)}</strong></td>
+    <td style="${rowStyle};font-family:monospace;font-size:12px;color:#888">${esc2(item.sku||'—')}</td>
+    <td style="${rowStyle}" class="num">${parseInt(item.qty||0).toLocaleString('da-DK')}</td>
+    <td style="${rowStyle}" class="num">${kr(sesu.price)}</td>
+  </tr>`).join('') + tableClose
+: '<div class="empty">Ingen varer i denne kategori</div>'}
+
+<h2>Ikke til salg på sesu.dk <span class="badge">${ikkeTilSalg.length}</span></h2>
+<div class="desc">Disse varer er på lager men matcher ingen produkt på sesu.dk — enten unoterede varianter, interne varer eller lagervarer uden salgsside.</div>
+${ikkeTilSalg.length ? tableOpen(['Varenavn','SKU','Kategori','Antal på lager']) +
+  ikkeTilSalg.sort((a,b)=>(a.name||'').localeCompare(b.name||'','da')).map(item => `<tr>
+    <td style="${rowStyle}"><strong>${esc2(item.name)}</strong></td>
+    <td style="${rowStyle};font-family:monospace;font-size:12px;color:#888">${esc2(item.sku||'—')}</td>
+    <td style="${rowStyle};color:#666">${esc2(item.cat||'—')}</td>
+    <td style="${rowStyle}" class="num">${parseInt(item.qty||0).toLocaleString('da-DK')}</td>
+  </tr>`).join('') + tableClose
+: '<div class="empty">Ingen varer i denne kategori</div>'}
+
+<h2>Top 10 bordben — flest på lager <span class="badge">tilbudspotentiale</span></h2>
+<div class="desc">Bordben sorteret efter lagerbeholdning — de med højest antal er oplagte kandidater til tilbud.</div>
+${bordben.length ? tableOpen(['#','Varenavn','Antal','Salgspris','Lagerværdi']) +
+  bordben.map(({item,qty,salgspris,lagervaerdi}, idx) => `<tr>
+    <td style="${rowStyle}" class="rank">${idx+1}.</td>
+    <td style="${rowStyle}"><strong>${esc2(item.name)}</strong><div style="font-size:11px;color:#999;margin-top:2px">${esc2(item.sku||'')}</div></td>
+    <td style="${rowStyle}" class="num">${qty.toLocaleString('da-DK')}</td>
+    <td style="${rowStyle}" class="num">${kr(salgspris)}</td>
+    <td style="${rowStyle}" class="num" style="color:#1a5fa8;font-weight:700">${kr(lagervaerdi)}</td>
+  </tr>`).join('') + tableClose
+: '<div class="empty">Ingen bordben fundet — tjek at kategori hedder Bordben</div>'}
+
+</body></html>`;
+
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+}
 
 // ── MÅNEDRAPPORT PDF ──
 async function generateMonthlyReport() {
