@@ -3856,8 +3856,12 @@ async function generatePartnerReport() {
   const sesuBySku = {};
   sesuProducts.forEach(p => { sesuBySku[p.sku] = p; });
 
-  // Strengere match til rapport: kræver at ALLE ikke-trivielle ord i vare-navnet
-  // også findes i sesu-produktets navn. Forhindrer "brush rose gold" → "gold"-match.
+  // Strengere match til rapport.
+  // colorsCompatible() bruges til display men returnerer true hvis ét token matcher —
+  // det er for løst til rapport. Her kræves ALLE farve/finish-tokens at matche.
+  const REPORT_COLOR_TOKENS = [...COLOR_TOKENS, 'rose','brush','gunmetal','messing','bronze','velvet','steel'];
+  function reportColorSet(s){ return REPORT_COLOR_TOKENS.filter(c => s.includes(c)); }
+
   function matchForReport(item) {
     const sku = (item.sku||'').trim();
     if(sku && sesuPrices[sku] !== undefined) {
@@ -3866,8 +3870,6 @@ async function generatePartnerReport() {
     }
     const nn = normName(item.name);
     if(!nn) return { found: false };
-    const SKIP = new Set(['og','en','et','af','til','med','fra','for','cm','mm','a','stk','og']);
-    const itemWords = nn.split(' ').filter(w => w.length > 2 && !SKIP.has(w));
     const itemCat = productCategory(item.name);
     let bestScore = 0, bestEntry = null, bestSn = null;
     for(const sn in sesuByName){
@@ -3876,10 +3878,12 @@ async function generatePartnerReport() {
       if(score > bestScore){ bestScore = score; bestEntry = sesuByName[sn]; bestSn = sn; }
     }
     if(bestScore < 0.28 || !bestEntry) return { found: false };
-    // Afvis hvis 2+ unikke ord fra varenavn mangler i sesu-match → sandsynligvis anden variant
-    const sesuWords = new Set((bestSn||'').split(' '));
-    const missing = itemWords.filter(w => !sesuWords.has(w));
-    if(missing.length >= 2) return { found: false };
+    // Kræv at ALLE farve/finish-tokens fra varenavn er til stede i sesu-match.
+    // "brush rose gold" → alle tre skal være i sesu-navnet, ellers er det en anden variant.
+    const itemColors = reportColorSet(nn);
+    if(itemColors.length > 0) {
+      if(!itemColors.every(c => (bestSn||'').includes(c))) return { found: false };
+    }
     return { found: true, outofstock: bestEntry.outofstock||false, price: bestEntry.price };
   }
 
