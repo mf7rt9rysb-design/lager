@@ -529,6 +529,27 @@ function getSesuPrices(forceRefresh) {
     }
   }
 
+  // Second pass: verify outofstock products via their individual product pages
+  // (shop listing may show outofstock for variable products even when a variant is in stock)
+  var toVerify = [];
+  for (var sku in products) {
+    if (products[sku].outofstock && products[sku].url) toVerify.push(sku);
+  }
+  if (toVerify.length > 0) {
+    var reqs = toVerify.map(function(sku) {
+      return { url: products[sku].url, muteHttpExceptions: true };
+    });
+    var responses = UrlFetchApp.fetchAll(reqs);
+    for (var ri = 0; ri < responses.length; ri++) {
+      var sku2 = toVerify[ri];
+      var body = responses[ri].getResponseCode() === 200 ? responses[ri].getContentText() : '';
+      var isInStock = body.indexOf('"InStock"') !== -1
+                   || body.indexOf('schema.org/InStock') !== -1
+                   || body.indexOf('&quot;InStock&quot;') !== -1;
+      if (isInStock) products[sku2].outofstock = false;
+    }
+  }
+
   cache.put(KEY, JSON.stringify(products), 21600);
   return products;
 }
